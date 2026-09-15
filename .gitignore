@@ -1,0 +1,26 @@
+# ---- Gradle / 构建产物 ----
+.gradle/
+build/
+out/
+
+# ---- 开发环境运行目录（含日志、配置、下载的依赖）----
+run/
+
+# ---- 日志 ----
+*.log
+
+# ---- IDE ----
+.idea/
+*.iml
+.vscode/
+*.ipr
+*.iws
+
+# ---- 第三方 mod jar，一律不入库 ----
+*.jar
+# 但 Gradle wrapper 必须保留，否则别人 clone 下来没法构建
+!gradle/wrapper/gradle-wrapper.jar
+
+# ---- 本机工具数据，绝不入库 ----
+.dsh-meow/
+.dsh/

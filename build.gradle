@@ -1,0 +1,119 @@
+plugins {
+    id 'fabric-loom' version '1.7-SNAPSHOT'
+}
+
+// ---------------------------------------------------------------------------
+// 双版本构建
+//
+//   .\gradlew build                 -> 用户版 autobridge-0.1.0.jar
+//   .\gradlew build -Pedition=dev   -> 开发版 autobridge-0.1.0-dev.jar
+//
+// 源码只有一份，差别集中在两处：
+//   1. 构建时生成的 Edition.DEV 编译期常量（控制 HUD 默认值与诊断日志）；
+//   2. 产物名带不带 -dev（fabric.mod.json 里的 ${version} 也会跟着变）。
+// ---------------------------------------------------------------------------
+def edition = (findProperty("edition") ?: "user").toString().toLowerCase()
+def isDevEdition = edition == "dev"
+
+version = project.mod_version + (isDevEdition ? "-dev" : "")
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        name = "TerraformersMC"
+        url = "https://maven.terraformersmc.com/releases/"
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    // ModMenu 是可选的：只在编译期需要它的 API，发布产物不强依赖它。
+    // modLocalRuntime 让开发环境的 runClient 里也能看到那个「设置」按钮。
+    modCompileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
+    modLocalRuntime "com.terraformersmc:modmenu:${project.modmenu_version}"
+
+    // Sodium（钠）没启用，用户暂时不需要。真要加的话有两个坑（都已实测确认）：
+    // ① 不能走 modLocalRuntime —— 0.5.13 是 Loom 1.9.2 构建的，本项目 Loom 1.7.4 会直接报
+    //    "Mod was built with a newer version of Loom"。得把 jar 丢进 run/mods/ 绕过构建期校验；
+    // ② 光放进 run/mods/ 还会在启动阶段崩：
+    //    "Sodium-EarlyDriverScanner: the currently active LWJGL version is not compatible"
+    //    —— 它要 LWJGL 3.3.2+，而 1.20.1 的 Loom 默认给 3.3.1，
+    //    需要在 configurations 里把 org.lwjgl 强制到 3.3.2。
+    // 备用的 jar 留在 libs/ 里。
+}
+
+// Java 没有条件编译，所以把「是不是开发版」落成一个构建时生成的编译期常量。
+def editionOutDir = layout.buildDirectory.dir("generated/sources/edition/java")
+
+tasks.register("generateEdition") {
+    def outDir = editionOutDir
+    def dev = isDevEdition
+    inputs.property "dev", dev
+    outputs.dir outDir
+    doLast {
+        // 用无插值的三引号模板 + 占位符替换：多行字符串里直接写插值和嵌套引号
+        // 会让 Groovy 解析器在收尾的 """ 处报 "Unexpected input"。
+        def template = '''package com.autobridge;
+
+/**
+ * 构建时由 Gradle 生成（见 build.gradle 的 generateEdition 任务），源码里不要手改。
+ *
+ * <p>gradlew build 得到用户版，gradlew build -Pedition=dev 得到开发版。
+ */
+public final class Edition {
+
+    /** true = 开发版：调试 HUD 默认打开，并输出全部诊断日志。 */
+    public static final boolean DEV = __DEV__;
+
+    /** 给日志与 ModMenu 显示用的版本名。 */
+    public static final String TITLE = "__TITLE__";
+
+    private Edition() {
+    }
+}
+'''
+        def content = template
+                .replace("__DEV__", dev.toString())
+                .replace("__TITLE__", dev ? "AutoBridge Dev" : "AutoBridge")
+
+        def pkgDir = new File(outDir.get().asFile, "com/autobridge")
+        pkgDir.mkdirs()
+        new File(pkgDir, "Edition.java").setText(content, "UTF-8")
+    }
+}
+
+sourceSets {
+    main {
+        java.srcDir editionOutDir
+    }
+}
+
+tasks.named("compileJava") {
+    dependsOn "generateEdition"
+}
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = "UTF-8"
+    it.options.release = 17
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
