@@ -1,162 +1,176 @@
-# AutoBridge — Minecraft 1.20.1 Fabric 纯客户端自动搭路
+# AutoBridge
 
-帮手残玩家快捷搭路。**只做潜行 + 模拟鼠标右键，绝不修改玩家视角。**
+A **client-side** bridging assistant for Minecraft **1.20.1 (Fabric)**. It takes over exactly **two inputs** — sneaking and right-clicking — and nothing else. Your movement and your camera stay completely in your hands.
+
+[![Modrinth](https://img.shields.io/badge/Modrinth-AutoBridge-1bd96a)](https://modrinth.com/mod/autobridge)
+![Minecraft](https://img.shields.io/badge/Minecraft-1.20.1-blue)
+![Loader](https://img.shields.io/badge/Loader-Fabric-orange)
+![Environment](https://img.shields.io/badge/Environment-Client--side-lightgrey)
+![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
 
-## 一、设计红线（不要违反）
+## Design ground rules
 
-1. **完全客户端**：`fabric.mod.json` 声明 `"environment": "client"`，入口只注册 `ClientModInitializer`，不注册任何服务端入口。
-2. **完全遵守原版搭路规则**：不放大交互距离、不做多块连放、不瞬移、不绕过 `BlockItem.place` 的合法性判定。每个 tick 最多一次放置，且频率受原版 `itemUseCooldown` 限制（约 5 CPS）。
-3. **用模拟鼠标右键，不用自己发放置包**：
-   - 走 `client.options.useKey.setPressed(true)` → 原版 `handleInputEvents()` → `doItemUse()`；
-   - **绝不**自己 `new PlayerInteractBlockC2SPacket` 然后 `sendPacket`。后者 `sequence` 不递增、rotation 不同步，是反作弊最典型的抓点。
-4. **绝不碰 rotation**：不调用 `player.setYaw/setPitch`。瞄准完全由玩家自己的鼠标产生 —— 这是本项目对反作弊最友好的一点。
-5. **放置位**：视角反方向（身后）一格、与脚下方块同层。
+These are non-negotiable; everything else follows from them.
 
-## 二、触发条件（BridgeValidator 逐条校验）
+1. **Fully client-side.** `fabric.mod.json` declares `"environment": "client"`, and only a `ClientModInitializer` is registered. There is no server entrypoint.
+2. **Vanilla placement rules only.** No extended reach, no multi-block placement, no teleporting, no bypassing `BlockItem.place`'s legality checks. At most one placement per tick, and the rate is capped by vanilla's own `itemUseCooldown` (~5 CPS).
+3. **Simulated right-click, never a hand-built packet.**
+   - It goes `client.options.useKey.setPressed(true)` → vanilla `handleInputEvents()` → `doItemUse()`.
+   - It **never** constructs a `PlayerInteractBlockC2SPacket` and sends it. That path leaves `sequence` un-incremented and rotation out of sync — the most obvious thing a server can flag.
+4. **The camera is never touched.** No `player.setYaw/setPitch` calls anywhere. Aiming comes entirely from your own mouse, which means the rotation the server receives is exactly the rotation your client produced.
+5. **Placement target:** one block in the **opposite direction of your view** (behind you), on the same layer as the block under your feet.
 
-| # | 条件 | 不满足时的提示 |
-|---|---|---|
-| ① | 准星命中方块 | 准星未命中方块 |
-| ② | 主手是 `BlockItem` | 主手不是方块物品 |
-| ③ | 原版 `ItemPlacementContext#canPlace` 通过 | 原版 canPlace 判定不可放置 |
-| ④ | 放置位与脚下方块同层 | 放置位不在脚下层 |
-| ⑤ | 放置位与脚下方块水平相邻（正好 1 格） | 放置位与脚下方块不相邻 |
-| ⑥ | 方向符合配置（默认：视角反方向） | 放置位不在视角反方向 |
-| ⑦ | 不与玩家碰撞箱重叠 | 放置位与玩家碰撞箱重叠 |
-| ⑧ | 眼到手距离 ≤ 原版 reach（生存 4.5） | 超出交互距离 |
-| ⑨ | 玩家处于潜行 | 未潜行（右键会先触发方块交互，放置不成立） |
+## Validation
 
-**为什么要用原版 `ItemPlacementContext`**：它算出来的位置就是服务端 `BlockItem.place` 会算的位置，同源。自己造 hitVec / 自己算 offset 是反作弊最容易抓的地方。
+Every placement passes through this chain. If any step fails, nothing happens and no click is sent.
 
-**为什么条件⑨必需**：原版里潜行时 `shouldCancelInteraction()` 返回 true，右键才会跳过"打开箱子/按按钮"直接进入放置流程。这也是为什么搭路必须潜行。
-
-**条件⑨ 天然要求"先潜行至少 1 tick"**：`player.isSneaking()` 在 `tickMovement()` 里更新，而放置发生在 `handleInputEvents()`，两者相差一个 tick。这正好符合反作弊期望的包顺序。
-
-## 三、按键
-
-| 按键 | 作用 |
+| # | Condition |
 |---|---|
-| 右 Alt（按一下） | 开关自动搭路（**默认开**）：站到方块边缘就自动潜行 + 满足条件自动右键，**离开边缘立刻松开潜行** |
-| B（按一下） | 轮换放置方向：视角反方向(身后) → 视角正方向(身前) → 任意相邻 |
-| N（按一下） | 轮换「边缘」判定阈值：0.03 → 0.08 → 0.15 → 0.22 → 0.30 格（**越小越极限**） |
+| ① | Crosshair is on a block |
+| ② | Main hand holds a `BlockItem` |
+| ③ | Vanilla `ItemPlacementContext#canPlace` passes |
+| ④ | There's a supporting block under your feet |
+| ⑤ | Target doesn't overlap your own hitbox |
+| ⑥ | Eye-to-target distance ≤ vanilla reach (4.5 survival) |
+| ⑦ | You are sneaking |
+| ⑧ | **You're aiming at a block's side face** — not the top or bottom |
+| ⑨ | Target is on the same layer as the block under your feet |
+| ⑩ | Target is 1–2 blocks away horizontally |
+| ⑪ | Target is in the opposite direction of your view |
 
-按键可以在「选项 → 按键绑定 → 自动搭路」里改。方向轮换是给调试用的——不确定哪种方向对，进游戏按 B 试一遍，看 HUD 的「期望位 / 实放位」哪个能对上。
+**Why vanilla's `ItemPlacementContext`:** the position it computes is the same position the server's `BlockItem.place` will compute — same source of truth. Hand-rolling an offset or fabricating a `hitVec` is where clients and servers start disagreeing.
 
-**设置会存盘**：方向、边缘阈值、AUTO 开关、HUD 开关都写到 `.minecraft/config/autobridge.properties`，按一下 `B` 或 `N` 就立刻记下，重启不丢。
+**Why ⑦ is required:** in vanilla, sneaking makes `shouldCancelInteraction()` return true, so the right-click skips "open this chest / press this button" and goes straight to placement. That's also why bridging requires sneaking at all.
 
-**AUTO 模式的判定**：必须**同时**满足三件事才算「站在（危险的）边缘」——①脚下确实踩在方块上（`findFootBlock` 拿得到支撑方块）；②玩家中心到某个方向的方块边界不足阈值（默认 `0.03` 格）；③那个方向**确实是危险的一侧**。
+**Why ⑧ exists:** aiming at a *side* face places the block outward (horizontal extension — that's bridging). Aiming at a *top* face places it upward (stacking, not bridging). AutoBridge refuses top and bottom faces outright.
 
-第③条分两层，「或」的关系：
+> Condition ⑦ implies sneaking must already be active for at least one tick: `player.isSneaking()` is updated in `tickMovement()`, while placement happens during `handleInputEvents()`. Those are one tick apart — which happens to match the packet ordering a vanilla client produces.
 
-- **大片虚空** —— 沿这个方向连续 `edgeLookAhead`（默认 2）格都是「空的、**且往下也接不住人**」。悬空桥、悬崖属于这类。这种情况下不管下面几格有什么都算危险：桥下恰好有个孤立方块、或者桥搭得矮时，掉下去虽然不摔伤，但会掉出搭路路线，等于白搭；
-- **深坑** —— 只有一格宽（再往外就是地面或台地），但往下探 `edgeDropDepth`（默认 3）格都接不住人。平地上一条一格宽的深沟属于这类。
+## Edge detection
 
-这两层都依赖「**落脚面**」这个概念：**光有一个方块不算落脚点**。孤立的单格方块、一格宽的窄梁都接不住人（人从旁边擦过去会继续往下掉），所以要求那一层附近 3×3 里至少有 `landingArea`（默认 5）格实心。像样的地面（9 格）、浅坑底（9 格）都过线，孤立方块（1 格）和窄梁（3 格）过不了。
+"Standing on a dangerous edge" requires **all three** of these:
 
-**比周围矮一层的台地 / 台阶不会触发**：它上方那一格确实是空气，但往下探一格就是大片地面 —— 有落脚面，走的是「深坑」层的豁免。
+1. You're actually supported — `findFootBlock` finds a block under your feet.
+2. Your center is within `edgeMargin` (default `0.03`) of a block boundary in some direction.
+3. That direction is genuinely dangerous.
 
-平地旁边只矮一格的小坑两层都不满足，所以不会触发潜行。
+Step 3 has two layers, OR'd together:
 
-缺任何一个条件都会误判：少了①，跳跃/坠落途中脚下全是空气，整段坠落都在强制潜行；少了②，站在平台正中间也会触发。
+- **Open void** — `edgeLookAhead` (default `2`) consecutive blocks outward are all "empty *and* nothing to land on below". Bare bridges and cliffs fall here. Anything below doesn't matter: a lone block under a bridge, or a low bridge over solid ground, still counts as dangerous — you'd survive the fall but leave the bridge line, which wastes the bridge.
+- **Deep hole** — only one block wide (solid ground resumes beyond it), but probing `edgeDropDepth` (default `3`) blocks down finds nothing to land on. A one-block-wide chasm in flat ground falls here.
 
-**速度也参与判定**：如果玩家正在**朝这个方向**移动、且速度超过 `fastApproachSpeed`（默认 `0.25` 格/刻），第③条会再多看一格。因为潜行要 1 tick 才同步到服务端，这段时间里玩家还在往虚空走——冲得越快走得越远，越需要提前把悬崖算出来。
+Both layers depend on the idea of a **landing surface**: *a single block is not a landing spot.* Isolated blocks and one-block-wide beams won't catch you — you'd glance off and keep falling. So a landing surface requires at least `landingArea` (default `5`) solid blocks in the 3×3 around it. Decent ground (9) and a shallow pit floor (9) qualify; an isolated block (1) and a one-block beam (3) don't.
 
-另外，打开任何界面（背包 / 暂停菜单 / 聊天）时模组完全不介入，也不会留着潜行键不放。
+**Terrain one block lower doesn't trigger it:** the block above it is indeed air, but probing one block down hits solid ground — the "deep hole" layer exempts it. A pit one block deep beside flat ground satisfies neither layer, so no sneak.
 
-阈值用 `N` 键现场调——`0.30` 约等于碰撞箱一贴边就触发，`0.03` 则要几乎半个身子悬空才触发。
+**Speed participates:** if you're moving *toward* that direction faster than `fastApproachSpeed` (default `0.25` blocks/tick), step 3 looks one block further out. Sneaking takes a tick to reach the server, and during that window you're still walking toward the void — the faster you're going, the further you travel, so the cliff needs to be detected earlier.
 
-另外 AUTO 还会额外检查两件事，避免干扰正常游戏：
+AUTO also checks two extra things so it stays out of your way:
 
-- **手上必须拿着方块物品** —— 否则空手路过任何悬崖都会被强制潜行；
-- **没有按跳跃键** —— 原版在潜行状态下会屏蔽跳跃，你想跳下去时必须让开。
+- **You must be holding a block item** — otherwise walking past any cliff empty-handed would force-sneak you.
+- **You must not be pressing jump** — vanilla blocks jumping while sneaking, so AutoBridge releases sneak the moment you want to jump down.
 
-以上选项都能在 **ModMenu 的设置界面**里直接点选，不用记按键（见下一节）。
+Opening any screen (inventory / pause / chat) makes the mod disengage completely, and it never leaves the sneak key held down.
 
-## 四、ModMenu 设置界面
+## Configuration
 
-装了 [ModMenu](https://github.com/TerraformersMC/ModMenu) 的话，在「Mods」列表里点 AutoBridge 的齿轮就能打开设置界面：
+> **No in-game keybindings.** The mod registers zero keys, so the Key Binds menu stays clean and nothing can clash with your own binds.
 
-- 自动搭路模式：开 / 关
-- 放置方向：视角反方向 / 视角正方向 / 任意相邻
-- 边缘判定阈值：0.03 → 0.08 → 0.15 → 0.22 → 0.30 格
-- 危险判定深度：1 ~ 5 格
-- 落脚面最小面积：1 ~ 9 格（3×3 里至少几格实心才算站得住）
-- 水平延伸跨度：2 ~ 4 格
-- 加速判定阈值：0.15 / 0.20 / 0.25 / 0.30 / 0.40 格/刻
-- 调试 HUD：开 / 关
+Everything lives in the **ModMenu** settings screen (ModMenu is optional — without it the mod still works, you just lose the GUI):
 
-每点一下立刻存盘，按钮上显示的永远是当前真实值，不存在「改了没保存」的中间状态。
+| Setting | Default | Range / options |
+|---|---|---|
+| Auto mode | On | On / Off |
+| Placement direction | Behind view | `BEHIND_VIEW` |
+| Edge threshold | 0.03 | 0.03 → 0.08 → 0.15 → 0.22 → 0.30 blocks |
+| Danger check depth | 3 | 1–5 blocks |
+| Horizontal look-ahead | 2 | 2–4 blocks |
+| Landing area | 5 | 1–9 blocks (3×3) |
+| Approach speed threshold | 0.25 | 0.15 / 0.20 / 0.25 / 0.30 / 0.40 blocks/tick |
+| Debug HUD | Off | On / Off |
 
-ModMenu 是**可选**的——没装照样能用，只是少一个图形化入口（`fabric.mod.json` 里写在 `suggests`，编译期用 `modCompileOnly`，发布产物不依赖它）。
+Every click saves immediately; the button always shows the real current value. Settings persist to `config/autobridge.properties`.
 
-## 五、调试 HUD
+**About defaults:** defaults only apply on the **first** run, when the config file doesn't exist yet. After that, whatever you set in ModMenu is stored and kept. So if you once enabled the HUD in a dev build, switching to the user build leaves the HUD on — that's the stored value, not the default failing to apply.
 
-左上角实时显示：
+`edgeMargin` in practice: `0.30` triggers as soon as your hitbox touches the edge; `0.03` requires you to be almost half off the block.
+
+## Debug HUD
+
+The dev edition renders this in the top-left:
 
 ```
-AutoBridge  AUTO(常开)  激活中
-方向: 视角反方向(身后)   [B键切换]
-准星: (12, 63, -8) 面=north 距离=1.87
-俯仰角: -58°   命中侧面通常要 -45° ~ -70°
-踩住方块: (12, 62, -8)
-期望位: (12, 62, -9)
-实放位: (12, 62, -9)
-判定: OK —— 模拟右键
-→ (被挡下时这里会直接告诉你下一步怎么做)
-潜行: 是  强制潜行=true  手上=Block{minecraft:stone}
-已模拟右键: 12 次   最近: 0秒前
+AutoBridge  AUTO(on)  active
+Direction: behind view
+Crosshair: (12, 63, -8) face=north dist=1.87
+Pitch: -58°  (hitting a side face usually needs -45° ~ -70°)
+Standing on: (12, 62, -8)
+Expected: (12, 62, -9)
+Actual: (12, 62, -9)
+Result: OK — simulated right-click
+→ (when blocked, this line tells you what to do next)
+Sneak: yes  forcedSneak=true  holding=Block{minecraft:stone}
+Simulated right-clicks: 12  last: 0s ago
 ```
 
-**最有用的是「判定」+「→」这两行**：判定告诉你被 9 条里的哪一条挡下，箭头那行直接翻译成"下一步该做什么"。
+**The "Result" + "→" lines are the useful ones** — they name which of the 11 checks blocked you, and translate it into "here's what to do next".
 
-「判定」那行会直接告诉你现在被哪一条挡下，这就是调参的主要依据。
+## Requirements
 
-## 六、构建与运行
+- Minecraft **1.20.1**
+- **Fabric Loader** 0.16.14 or newer
+- **Fabric API** 0.92.12+1.20.1 or newer
+- **Java 21**
+- Optional: **ModMenu** (not bundled, not required — declared under `suggests`)
 
-### 两个版本
+## Building
 
-源码只有一份，产出两个 jar：
+### Two editions
 
-| 版本 | 构建命令 | 产物 | 区别 |
+One source tree, two jars:
+
+| Edition | Command | Output | Difference |
 |---|---|---|---|
-| **用户版** | `.\dev.ps1 build` | `autobridge-0.1.0.jar` | 调试 HUD **默认关闭**、不输出任何诊断日志、控制台干净 |
-| **开发版** | `.\dev.ps1 dev` | `autobridge-0.1.0-dev.jar` | 调试 HUD **默认打开**、输出 `DENIED:` 等全部排查日志 |
+| **User** | `.\dev.ps1 build` | `autobridge-0.1.0.jar` | Debug HUD **off** by default, no diagnostic logging, clean console |
+| **Dev** | `.\dev.ps1 dev` | `autobridge-0.1.0-dev.jar` | Debug HUD **on** by default, full `DENIED:` logging |
 
-两者的差别只是一个构建时生成的编译期常量 `Edition.DEV`，源码完全相同。想直接跑 Gradle 的话：
+They differ only by a build-time constant (`Edition.DEV`) generated by Gradle — the source is identical. With raw Gradle:
 
 ```bash
-gradlew build                 # 用户版
-gradlew build -Pedition=dev   # 开发版
+gradlew build                 # user edition
+gradlew build -Pedition=dev   # dev edition
 ```
 
-> **调试时请务必用开发版**——用户版不打 `DENIED:` 日志，卡在哪一条校验上会看不出来。
+> **Use the dev edition when troubleshooting** — the user edition emits no diagnostic logging, so you can't see which check is blocking you.
 
-**关于"默认值"**：默认值只在**第一次运行**（配置文件还不存在）时生效。之后你按 `B` / `N` / 右 Alt 或在 ModMenu 里改过的值都会存进 `config/autobridge.properties` 并一直保留。所以如果你之前用开发版把 HUD 打开过，换成用户版后 HUD 仍然是开的——那是配置文件里的旧值，不是默认值没生效。
-
-### 直接运行客户端
+### Running the client
 
 ```powershell
-.\dev.ps1 runClient     # 自动使用开发版，带完整诊断
-.\dev.ps1 build         # 产出用户版  build/libs/autobridge-0.1.0.jar
-.\dev.ps1 dev           # 产出开发版  build/libs/autobridge-0.1.0-dev.jar
+.\dev.ps1 runClient     # dev edition, full diagnostics
+.\dev.ps1 build         # user jar  -> build/libs/autobridge-0.1.0.jar
+.\dev.ps1 dev           # dev jar   -> build/libs/autobridge-0.1.0-dev.jar
 ```
 
-`dev.ps1` 会自动找本机 JDK（默认 `D:\zulu21.48.15-ca-jdk21.0.10-win_x64`），不需要配置全局 `JAVA_HOME`。
+`dev.ps1` locates a JDK 21 on this machine automatically, so no global `JAVA_HOME` is needed.
 
-手动安装：把用户版 `build/libs/autobridge-0.1.0.jar` 丢进 `.minecraft/mods/`，并确保已装 **Fabric API**（`fabric-api-0.92.12+1.20.1`）。
+Manual install: drop the **user** jar (`autobridge-0.1.0.jar`) into `.minecraft/mods/` alongside **Fabric API**.
 
-## 七、常见问题
+## FAQ
 
-**Q：模组完全没反应？**
-看 HUD 的「判定」行：
-- `未潜行` → 模组强制潜行没生效，检查 `BridgeConfig.forceSneak`；
-- `准星未命中方块` → 视角不够低。**站在方块正上方时，数学上永远看不到脚下方块的侧面**，必须走到方块边缘 + 低头约 65° 以上；
-- `放置位不在脚下层` / `不在视角反方向` → 方向配置反了，把 `BridgeConfig.directionMode` 换成 `FRONT_VIEW` 试试。
+**The mod does nothing.** Check the HUD's "Result" line:
 
-**Q：方向到底该选哪个？**
-`BEHIND_VIEW` = 方块放身后（当前默认，用户确认的搭路姿势）；`FRONT_VIEW` = 方块放身前；`ANY` = 不判断方向，只要脚下同层相邻就放。HUD 会同时显示「期望位」和「实放位」，对比一下就知道了。
+- `not sneaking` → forced sneak isn't taking effect.
+- `crosshair not on a block` → your view isn't low enough. **Standing directly on top of a block, you mathematically cannot see its side faces** — you have to be at the edge and looking down roughly 65° or steeper.
+- `target not on the foot layer` / `not in the opposite direction of view` → the target landed somewhere unexpected; check the "Expected" vs "Actual" coordinates on the HUD.
 
-**Q：会不会被封号？**
-本模组只降低被检测的概率，**不提供任何保证**。它消除了"包结构错误"这类低级特征，但服务器仍然可能通过行为分析（触发过于精准、CPS 恒定、走位过于规律）识别。**请只在单机或自己人的私服使用。**
+**It placed a block when I aimed at the top face.** It shouldn't — condition ⑧ rejects top and bottom faces. If you see this, the log line `模拟右键 #N: placePos=... hit=.../...` records the face for each placement; please report it with that line.
+
+**Why is there no keybind?** By design. Settings are GUI-only so nothing can conflict with your own keys.
+
+**Can I get banned for this?** AutoBridge reduces the likelihood of *automated* detection, and **offers no guarantee whatsoever**. It removes low-level packet-level tells (it builds no custom packets, sends no rotation it didn't receive), but a server can still identify assistance behaviourally — placement timing that's too precise, a suspiciously constant CPS, movement that's too regular. **Use it in singleplayer or on a private server you control.** On public servers, check the rules first; that's entirely up to the server.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
