@@ -27,25 +27,36 @@ if ($Task -contains "runClient" -and $Task -notcontains "-Pedition=dev") {
     $Task += "-Pedition=dev"
 }
 
-# 找一个可用的 JDK 21
-$candidates = @(
-    "D:\zulu21.48.15-ca-jdk21.0.10-win_x64",
-    "D:\graalvm-jdk-21.0.12+7.1",
-    "D:\zulu25.30.17-ca-jdk25.0.1-win_x64",
-    "C:\Program Files\Android\openjdk\jdk-21.0.8"
-)
-
+# 找一个可用的 JDK：优先环境变量与 PATH，最后才试下面的本机路径。
 $jdk = $null
-foreach ($c in $candidates) {
-    if (Test-Path (Join-Path $c "bin\java.exe")) { $jdk = $c; break }
+
+if ($env:JAVA_HOME -and (Test-Path (Join-Path $env:JAVA_HOME "bin\java.exe"))) {
+    $jdk = $env:JAVA_HOME
 }
 
 if (-not $jdk) {
-    if ($env:JAVA_HOME -and (Test-Path (Join-Path $env:JAVA_HOME "bin\java.exe"))) {
-        $jdk = $env:JAVA_HOME
-    } else {
-        throw "找不到可用的 JDK。请修改 dev.ps1 里的 `$candidates 列表。"
+    $onPath = Get-Command java -ErrorAction SilentlyContinue
+    if ($onPath) {
+        # 从 ...\bin\java.exe 反推出 JDK 根目录
+        $jdk = Split-Path (Split-Path $onPath.Source -Parent) -Parent
     }
+}
+
+# 本机（开发者的机器）专用回退路径 —— 别人的机器上通常走不到这里
+$localCandidates = @(
+    "D:\zulu21.48.15-ca-jdk21.0.10-win_x64",
+    "D:\graalvm-jdk-21.0.12+7.1",
+    "C:\Program Files\Android\openjdk\jdk-21.0.8"
+)
+
+if (-not $jdk) {
+    foreach ($c in $localCandidates) {
+        if (Test-Path (Join-Path $c "bin\java.exe")) { $jdk = $c; break }
+    }
+}
+
+if (-not $jdk) {
+    throw "找不到可用的 JDK。请设置 JAVA_HOME 环境变量，或在 dev.ps1 的 `$localCandidates 里补一个路径。"
 }
 
 $env:JAVA_HOME = $jdk

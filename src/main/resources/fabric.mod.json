@@ -3,10 +3,15 @@
   "id": "autobridge",
   "version": "${version}",
   "name": "AutoBridge",
-  "description": "纯客户端自动搭路。只模拟潜行与鼠标右键，绝不修改玩家视角（rotation）。",
+  "description": "Client-side bridging assistant. Simulates only sneaking and right-clicking through vanilla's own input path, never modifies your camera or movement.",
   "authors": [
-    "you"
+    "peirooden"
   ],
+  "contact": {
+    "homepage": "https://modrinth.com/mod/autobridge",
+    "sources": "https://github.com/peirooden/autobridge",
+    "issues": "https://github.com/peirooden/autobridge/issues"
+  },
   "license": "MIT",
   "icon": "assets/autobridge/icon.png",
   "environment": "client",
