@@ -104,46 +104,36 @@ public final class BridgeConfig {
     /** edgeMargin 的候选档位，N 键依次轮换。 */
     public static final double[] EDGE_MARGIN_STEPS = {0.03D, 0.08D, 0.15D, 0.22D, 0.30D};
 
-    /**
-     * 判定「危险边缘」时往下探多少格：如果边缘外侧在这个深度内能找到落脚方块，
-     * 就认为掉下去无所谓（比如平地旁边一个只矮一格的小坑，走回来就行），不触发潜行。
-     *
-     * <p>默认 3 —— 原版掉落 3 格以内不掉血，所以 3 格内有底就不算危险。
-     * 只有悬崖和虚空这种「探到底都没东西接着」的地方才值得为它潜行。
-     */
-    public static int edgeDropDepth = 3;
-
-    /**
-     * 「落脚面」的最小面积（同一层 3×3 里至少要有几格实心）。
-     *
-     * <p>孤立的单格方块、一格宽的窄梁都接不住人 —— 人从旁边擦过去会继续往下掉，
-     * 所以它们不算落脚点。默认 5：像样的地面（3×3 铺满 = 9）和浅坑底（9）都过线，
-     * 孤立方块（1）和窄梁（3）过不了。
-     */
-    public static int landingArea = 5;
-
-    /**
-     * 危险判定时沿悬空方向往外看几格：连续这么多格都空，就认定是「大片虚空」（悬空桥、悬崖），
-     * 而不是平地上一个小坑。
-     *
-     * <p>最小 2 —— 只看 1 格的话，桥下恰好有个孤立方块、或者桥搭得矮（下方就是地面），
-     * 都会被误判成「掉下去没事」而漏掉潜行。
-     */
-    public static int edgeLookAhead = 2;
-
-    /**
-     * 玩家朝悬空方向的速度达到这个值（格/tick）时，判定再多看一格。
-     *
-     * <p>因为潜行要 1 tick 才同步到服务端，这段时间里玩家还在往虚空走 —— 速度越快，
-     * 这段空窗走得越远，越需要提前发现。参考值：走路约 0.22、疾跑约 0.28、潜行约 0.07。
-     */
-    public static double fastApproachSpeed = 0.25D;
+    // 注意：0.2.0 删掉了 edgeDropDepth / landingArea / edgeLookAhead / fastApproachSpeed 四项。
+    // 它们原本用来把「真悬崖」和「平地浅坑」区分开，免得自动检测乱潜行；
+    // 现在启动权在玩家手里（要自己蹲+低头+放一格），只要在边缘就该潜行，这套判定失去意义。
+    // 旧配置文件里残留的这几个键会被直接忽略，下次 save() 时不再写回。
 
     /** 是否由模组强制潜行。搭路必需（潜行时右键才会跳过方块交互直接放置）。 */
     public static boolean forceSneak = true;
 
     /** 是否显示调试 HUD。开发版默认开，用户版默认关（在 ModMenu 里仍可手动打开）。 */
     public static boolean debugHud = Edition.DEV;
+
+    /**
+     * 启动搭路所需的低头程度（俯仰角，<b>正数表示向下看</b>）。
+     *
+     * <p>⚠️ Minecraft 的 {@code Entity#getPitch()} 约定：<b>+90 是垂直向下看脚底，
+     * -90 才是抬头看天</b>。所以低头是<b>正</b>值，别写反。
+     *
+     * <p>用户实测：能把准星压到脚下方块<i>侧面</i>的俯仰角大约在 <b>+77° ~ +83°</b>。
+     * 低于这个范围射线会越过方块落到更远的顶面上，根本瞄不到侧面。
+     * 默认 77，即"确实在看脚底"的程度。
+     */
+    public static double lowHeadPitch = 77.0D;
+
+    /**
+     * 搭路启动后，连续这么多 tick 没有「成功放置」就自动结束、回到待机。
+     *
+     * <p>60 tick = 3 秒。计时以<b>世界状态确认过的真实放置</b>为准，
+     * 不是「模拟了几次右键」—— 右键发出去了但被服务端拒绝的不算数。
+     */
+    public static int idleTimeoutTicks = 60;
 
     /** 触发前的最小随机延迟（tick）。 */
     public static int minDelayTicks = 0;
@@ -188,28 +178,16 @@ public final class BridgeConfig {
         }
 
         try {
-            edgeDropDepth = Integer.parseInt(props.getProperty("edgeDropDepth", String.valueOf(edgeDropDepth)));
+            lowHeadPitch = Double.parseDouble(props.getProperty("lowHeadPitch", String.valueOf(lowHeadPitch)));
         } catch (NumberFormatException e) {
-            LOGGER.warn("[AutoBridge] bad edgeDropDepth in config, keeping {}", edgeDropDepth);
+            LOGGER.warn("[AutoBridge] bad lowHeadPitch in config, keeping {}", lowHeadPitch);
         }
 
         try {
-            landingArea = Integer.parseInt(props.getProperty("landingArea", String.valueOf(landingArea)));
+            idleTimeoutTicks = Integer.parseInt(
+                    props.getProperty("idleTimeoutTicks", String.valueOf(idleTimeoutTicks)));
         } catch (NumberFormatException e) {
-            LOGGER.warn("[AutoBridge] bad landingArea in config, keeping {}", landingArea);
-        }
-
-        try {
-            edgeLookAhead = Integer.parseInt(props.getProperty("edgeLookAhead", String.valueOf(edgeLookAhead)));
-        } catch (NumberFormatException e) {
-            LOGGER.warn("[AutoBridge] bad edgeLookAhead in config, keeping {}", edgeLookAhead);
-        }
-
-        try {
-            fastApproachSpeed = Double.parseDouble(
-                    props.getProperty("fastApproachSpeed", String.valueOf(fastApproachSpeed)));
-        } catch (NumberFormatException e) {
-            LOGGER.warn("[AutoBridge] bad fastApproachSpeed in config, keeping {}", fastApproachSpeed);
+            LOGGER.warn("[AutoBridge] bad idleTimeoutTicks in config, keeping {}", idleTimeoutTicks);
         }
 
         String dir = props.getProperty("directionMode");
@@ -230,9 +208,9 @@ public final class BridgeConfig {
             }
         }
 
-        LOGGER.info("[AutoBridge] config loaded: auto={} mode={} direction={} hud={} | edgeMargin={} dropDepth={} landingArea={} lookAhead={} fastApproach={}",
+        LOGGER.info("[AutoBridge] config loaded: auto={} mode={} direction={} hud={} | edgeMargin={} lowHeadPitch={} idleTimeout={}tick",
                 autoMode, bridgeMode, directionMode, debugHud,
-                edgeMargin, edgeDropDepth, landingArea, edgeLookAhead, fastApproachSpeed);
+                edgeMargin, lowHeadPitch, idleTimeoutTicks);
 
         // 回写一次：老版本存下的文件会缺掉后来新加的键，这样能自动补齐
         save();
@@ -245,10 +223,8 @@ public final class BridgeConfig {
         props.setProperty("forceSneak", String.valueOf(forceSneak));
         props.setProperty("debugHud", String.valueOf(debugHud));
         props.setProperty("edgeMargin", String.valueOf(edgeMargin));
-        props.setProperty("edgeDropDepth", String.valueOf(edgeDropDepth));
-        props.setProperty("landingArea", String.valueOf(landingArea));
-        props.setProperty("edgeLookAhead", String.valueOf(edgeLookAhead));
-        props.setProperty("fastApproachSpeed", String.valueOf(fastApproachSpeed));
+        props.setProperty("lowHeadPitch", String.valueOf(lowHeadPitch));
+        props.setProperty("idleTimeoutTicks", String.valueOf(idleTimeoutTicks));
         props.setProperty("directionMode", directionMode.name());
         props.setProperty("bridgeMode", bridgeMode.name());
         try (OutputStream out = Files.newOutputStream(configPath())) {

@@ -2,6 +2,8 @@
 
 A **client-side** bridging assistant for Minecraft **1.20.1 (Fabric)**. It takes over exactly **two inputs** — sneaking and right-clicking — and nothing else. Your movement and your camera stay completely in your hands.
 
+You start it yourself: crouch on a block edge, look down at your feet, and place one block into the cell directly below you. From that point the mod takes over, and it releases control again after a few seconds without a placement.
+
 [![Modrinth](https://img.shields.io/badge/Modrinth-AutoBridge-1bd96a)](https://modrinth.com/mod/autobridge)
 ![Minecraft](https://img.shields.io/badge/Minecraft-1.20.1-blue)
 ![Loader](https://img.shields.io/badge/Loader-Fabric-orange)
@@ -48,31 +50,46 @@ Every placement passes through this chain. If any step fails, nothing happens an
 
 > Condition ⑦ implies sneaking must already be active for at least one tick: `player.isSneaking()` is updated in `tickMovement()`, while placement happens during `handleInputEvents()`. Those are one tick apart — which happens to match the packet ordering a vanilla client produces.
 
-## Edge detection
+## Starting and stopping
 
-"Standing on a dangerous edge" requires **all three** of these:
+**AutoBridge never decides on its own when to bridge.** You start it; it stops by itself when you're done.
 
-1. You're actually supported — `findFootBlock` finds a block under your feet.
-2. Your center is within `edgeMargin` (default `0.03`) of a block boundary in some direction.
-3. That direction is genuinely dangerous.
+### Starting
 
-Step 3 has two layers, OR'd together:
+Stand on a block edge, press sneak **yourself**, look down at your feet, and place one block into the cell **directly below your position**. That single placement is the start signal — specifically, that cell going from empty to solid.
 
-- **Open void** — `edgeLookAhead` (default `2`) consecutive blocks outward are all "empty *and* nothing to land on below". Bare bridges and cliffs fall here. Anything below doesn't matter: a lone block under a bridge, or a low bridge over solid ground, still counts as dangerous — you'd survive the fall but leave the bridge line, which wastes the bridge.
-- **Deep hole** — only one block wide (solid ground resumes beyond it), but probing `edgeDropDepth` (default `3`) blocks down finds nothing to land on. A one-block-wide chasm in flat ground falls here.
+Why that cell: standing on an edge means your float position extends into the neighbouring cell, so `player.getBlockPos().down()` points at air. Filling it is what the mod watches for.
 
-Both layers depend on the idea of a **landing surface**: *a single block is not a landing spot.* Isolated blocks and one-block-wide beams won't catch you — you'd glance off and keep falling. So a landing surface requires at least `landingArea` (default `5`) solid blocks in the 3×3 around it. Decent ground (9) and a shallow pit floor (9) qualify; an isolated block (1) and a one-block beam (3) don't.
+All of these must hold at the moment that block appears:
 
-**Terrain one block lower doesn't trigger it:** the block above it is indeed air, but probing one block down hits solid ground — the "deep hole" layer exempts it. A pit one block deep beside flat ground satisfies neither layer, so no sneak.
+| # | Condition |
+|---|---|
+| ① | You are sneaking (the mod is not touching the key while idle, so this can only be you) |
+| ② | You were on an edge within the last few ticks |
+| ③ | `pitch` is greater than the startup angle (default **77°** — positive is looking down) |
+| ④ | Your main hand holds a `BlockItem` |
+| ⑤ | The cell below you went empty → solid |
 
-**Speed participates:** if you're moving *toward* that direction faster than `fastApproachSpeed` (default `0.25` blocks/tick), step 3 looks one block further out. Sneaking takes a tick to reach the server, and during that window you're still walking toward the void — the faster you're going, the further you travel, so the cliff needs to be detected earlier.
+### While active
 
-AUTO also checks two extra things so it stays out of your way:
+The mod sneaks and right-clicks for you, **but only while you are on an edge**. Sneak is released the moment you leave the edge rather than held continuously — vanilla multiplies your movement speed by 0.3 while sneaking, so holding it would make bridging feel like walking through mud.
 
-- **You must be holding a block item** — otherwise walking past any cliff empty-handed would force-sneak you.
-- **You must not be pressing jump** — vanilla blocks jumping while sneaking, so AutoBridge releases sneak the moment you want to jump down.
+It also releases sneak when your main hand is not a block, or when you press jump (vanilla blocks jumping while sneaking). Opening any screen disengages it completely.
 
-Opening any screen (inventory / pause / chat) makes the mod disengage completely, and it never leaves the sneak key held down.
+### Stopping
+
+After **3 seconds (60 ticks)** without a confirmed placement it returns to idle.
+
+The timer is reset by each placement **the world actually confirms**, not by each click sent. Every click is followed up by checking the target cell on the next tick: only if a block really appeared there does the timer reset. A click the server rejects does not count.
+
+### What counts as an edge
+
+Either of these:
+
+1. Your center cell is already air (your hitbox is still supported by a neighbouring block) — the most extreme case.
+2. Your center is within `edgeMargin` (default `0.03`) of a block boundary in some direction, and the block beyond that boundary is empty.
+
+That is the whole check. There is deliberately **no** "is this edge actually dangerous" analysis: because you start the mod by hand, you have already declared that you are bridging, so any edge is worth sneaking for.
 
 ## Configuration
 
@@ -83,39 +100,42 @@ Everything lives in the **ModMenu** settings screen (ModMenu is optional — wit
 | Setting | Default | Range / options |
 |---|---|---|
 | Auto mode | On | On / Off |
+| Startup pitch | 77° | 65 / 70 / 77 / 83 |
+| Idle timeout | 3 s | 1 / 2 / 3 / 4 / 5 s |
 | Placement direction | Behind view | `BEHIND_VIEW` |
 | Edge threshold | 0.03 | 0.03 → 0.08 → 0.15 → 0.22 → 0.30 blocks |
-| Danger check depth | 3 | 1–5 blocks |
-| Horizontal look-ahead | 2 | 2–4 blocks |
-| Landing area | 5 | 1–9 blocks (3×3) |
-| Approach speed threshold | 0.25 | 0.15 / 0.20 / 0.25 / 0.30 / 0.40 blocks/tick |
 | Debug HUD | Off | On / Off |
 
 Every click saves immediately; the button always shows the real current value. Settings persist to `config/autobridge.properties`.
 
 **About defaults:** defaults only apply on the **first** run, when the config file doesn't exist yet. After that, whatever you set in ModMenu is stored and kept. So if you once enabled the HUD in a dev build, switching to the user build leaves the HUD on — that's the stored value, not the default failing to apply.
 
-`edgeMargin` in practice: `0.30` triggers as soon as your hitbox touches the edge; `0.03` requires you to be almost half off the block.
+`edgeMargin` in practice: `0.30` triggers as soon as your hitbox touches the edge; `0.03` requires you to be almost half off the block. **Smaller is stricter.**
 
 ## Debug HUD
 
 The dev edition renders this in the top-left:
 
 ```
-AutoBridge  AUTO(on)  active
+AutoBridge  AUTO(on)  idle
+State: idle — crouch on an edge, look down, place one block below you
+  Conditions: sneakX edgeX pitchX holdX placed-below√
 Direction: behind view
 Crosshair: (12, 63, -8) face=north dist=1.87
-Pitch: -58°  (hitting a side face usually needs -45° ~ -70°)
+Pitch: 81°  (a side face needs roughly +77° ~ +83°)
+Standing on edge: yes  threshold=0.03 blocks
 Standing on: (12, 62, -8)
 Expected: (12, 62, -9)
-Actual: (12, 62, -9)
-Result: OK — simulated right-click
-→ (when blocked, this line tells you what to do next)
-Sneak: yes  forcedSneak=true  holding=Block{minecraft:stone}
-Simulated right-clicks: 12  last: 0s ago
+Actual: -
+Result: not active
+→ how to start
+Sneak: no  forcedSneak=true  holding=Block{minecraft:stone}
+Simulated right-clicks: 75   confirmed placements: 75   last: 0s ago
 ```
 
-**The "Result" + "→" lines are the useful ones** — they name which of the 11 checks blocked you, and translate it into "here's what to do next".
+**The "Conditions" line is the useful one while starting up** — it shows, live, which of the five startup conditions is failing. During bridging, the `State:` line reports whether sneak is currently held (`on edge` / `released`).
+
+**"Simulated right-clicks" vs "confirmed placements" is the other line worth watching.** They count different things: the first is how many clicks were sent, the second how many of those the world actually confirmed. If the two diverge, clicks are going out but not landing.
 
 ## Requirements
 
@@ -133,8 +153,8 @@ One source tree, two jars:
 
 | Edition | Command | Output | Difference |
 |---|---|---|---|
-| **User** | `.\dev.ps1 build` | `autobridge-0.1.1.jar` | Debug HUD **off** by default, no diagnostic logging, clean console |
-| **Dev** | `.\dev.ps1 dev` | `autobridge-0.1.1-dev.jar` | Debug HUD **on** by default, full `DENIED:` logging |
+| **User** | `.\dev.ps1 build` | `autobridge-0.2.0.jar` | Debug HUD **off** by default, no diagnostic logging, clean console |
+| **Dev** | `.\dev.ps1 dev` | `autobridge-0.2.0-dev.jar` | Debug HUD **on** by default, full `DENIED:` logging |
 
 They differ only by a build-time constant (`Edition.DEV`) generated by Gradle — the source is identical. With raw Gradle:
 
@@ -149,21 +169,29 @@ gradlew build -Pedition=dev   # dev edition
 
 ```powershell
 .\dev.ps1 runClient     # dev edition, full diagnostics
-.\dev.ps1 build         # user jar  -> build/libs/autobridge-0.1.1.jar
-.\dev.ps1 dev           # dev jar   -> build/libs/autobridge-0.1.1-dev.jar
+.\dev.ps1 build         # user jar  -> build/libs/autobridge-0.2.0.jar
+.\dev.ps1 dev           # dev jar   -> build/libs/autobridge-0.2.0-dev.jar
 ```
 
 `dev.ps1` locates a JDK 21 on this machine automatically, so no global `JAVA_HOME` is needed.
 
-Manual install: drop the **user** jar (`autobridge-0.1.1.jar`) into `.minecraft/mods/` alongside **Fabric API**.
+Manual install: drop the **user** jar (`autobridge-0.2.0.jar`) into `.minecraft/mods/` alongside **Fabric API**.
 
 ## FAQ
 
-**The mod does nothing.** Check the HUD's "Result" line:
+**The mod does nothing.** It stays idle until you start it. The HUD's "Conditions" line shows which of the five startup conditions is failing:
+
+- `sneakX` → you are not sneaking. While idle the mod does not touch the sneak key, so this has to come from you.
+- `edgeX` → you are not on an edge (see *What counts as an edge* above).
+- `pitchX` → you are not looking down far enough. **Standing on top of a block you mathematically cannot see its side faces** — you have to be at the edge and looking down roughly 77° or steeper.
+- `holdX` → your main hand is not a block.
+- `placed-belowX` → the mod has not seen a block appear in the cell below you. That cell is `player.getBlockPos().down()`; if you placed somewhere else, this stays X.
+
+During bridging, blocked placements are named on the HUD's `Result:` line:
 
 - `not sneaking` → forced sneak isn't taking effect.
-- `crosshair not on a block` → your view isn't low enough. **Standing directly on top of a block, you mathematically cannot see its side faces** — you have to be at the edge and looking down roughly 65° or steeper.
-- `target not on the foot layer` / `not in the opposite direction of view` → the target landed somewhere unexpected; check the "Expected" vs "Actual" coordinates on the HUD.
+- `crosshair not on a block` → your view isn't low enough.
+- `target not on the foot layer` / `not in the opposite direction of view` → the target landed somewhere unexpected; compare the "Expected" and "Actual" coordinates on the HUD.
 
 **It placed a block when I aimed at the top face.** It shouldn't — condition ⑧ rejects top and bottom faces. If you see this, the log line `模拟右键 #N: placePos=... hit=.../...` records the face for each placement; please report it with that line.
 

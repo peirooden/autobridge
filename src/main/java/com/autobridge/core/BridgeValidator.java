@@ -192,16 +192,24 @@ public final class BridgeValidator {
     }
 
     /**
-     * 玩家是否站在「危险的」方块边缘 —— 必须同时满足三件事：
+     * 玩家是否站在方块边缘 —— 两件事：
      * <ol>
      *   <li>脚下确实踩在方块上（排除跳跃/坠落途中）；</li>
-     *   <li>某个方向已经悬空，且玩家中心离那条边界不足阈值；</li>
-     *   <li>那个方向往下探若干格都接不住人（排除平地旁的小坑）。</li>
+     *   <li>某个方向已经悬空，且玩家中心离那条边界不足 {@link BridgeConfig#edgeMargin}。</li>
      * </ol>
      *
-     * <p>少了 ①，人在坠落途中脚下全是空气，会被判成站在边缘，整段坠落都在强制潜行；
-     * 少了 ②，站在平台正中间也会触发；
-     * 少了 ③，平地上一个矮一格的小坑也会触发潜行——那种情况掉下去走回来就行，潜行纯属添乱。
+     * <p>少了 ①，人在坠落途中脚下全是空气，会被判成站在边缘。
+     *
+     * <h2>为什么不再判断「这里危不危险」</h2>
+     * <p>0.2.0 之前这里还有第三层判定：往下探 {@code edgeDropDepth} 格找落脚面、沿悬空方向
+     * 看 {@code edgeLookAhead} 格是不是大片虚空、落脚面够不够 {@code landingArea} 大 ——
+     * 目的是把「真悬崖」和「平地旁的浅坑」区分开，免得模组在人家正常走路时乱潜行。
+     *
+     * <p><b>现在启动权在玩家手里</b>（要自己蹲 + 低头 + 放一格才启动），
+     * 等于他已经声明了「我在搭路」。那就<b>只要在边缘就该潜行</b>，
+     * 不需要再论证这个边缘值不值得 —— 于是这一整套判定连同
+     * {@code isRiskyGap} / {@code lookAheadSpan} / {@code hasLandingBelow} / {@code landingAreaAt}
+     * 全部删除（用户要求：「既然咱们已经设置了这么复杂自动搭路开启前置，之前的那个深度和水平检测可以去掉了」）。
      */
     public static boolean isOnBlockEdge(ClientPlayerEntity player, World world) {
         // ① 先要求真的踩在方块上：人一离地就出局
@@ -216,104 +224,16 @@ public final class BridgeValidator {
         int bx = MathHelper.floor(cx);
         int bz = MathHelper.floor(cz);
 
-        // ② + ③ 中心格已经变成空气（但碰撞箱还压着旁边的方块）——这已经是最极限的边缘
+        // ② 中心格本身已经空了（但碰撞箱还压着旁边的方块）—— 这已经是最极限的边缘
         if (isEmptyAt(world, bx, y, bz)) {
-            return isRiskyGap(player, world, bx, y, bz, 0, 0);
-        }
-
-        return (cx - bx < m && isRiskyGap(player, world, bx, y, bz, -1, 0))
-                || ((bx + 1) - cx < m && isRiskyGap(player, world, bx, y, bz, 1, 0))
-                || (cz - bz < m && isRiskyGap(player, world, bx, y, bz, 0, -1))
-                || ((bz + 1) - cz < m && isRiskyGap(player, world, bx, y, bz, 0, 1));
-    }
-
-    /**
-     * 这个方向值不值得为它潜行。判定分两层，「或」的关系：
-     * <ol>
-     *   <li><b>大片虚空</b>：沿这个方向连续 edgeLookAhead 格都没有方块 —— 悬空桥、悬崖。
-     *       这种情况不管下面几格有没有东西都算危险：桥下恰好有个孤立方块、或者桥搭得矮
-     *       （正下方就是地面）时，掉下去虽然不摔伤，但会掉出搭路路线，等于白搭；</li>
-     *   <li><b>深坑</b>：只有一格宽（再往外就是地面，像平地旁那种小坑），但往下探不到落脚点
-     *       —— 平地上一条一格宽的深沟。</li>
-     * </ol>
-     *
-     * <p>平地旁边只矮一格的小坑两层都不满足，所以不会触发潜行。
-     */
-    private static boolean isRiskyGap(ClientPlayerEntity player, World world,
-                                      int x, int y, int z, int dx, int dz) {
-        if (!isEmptyAt(world, x, y, z)) {
-            return false;
-        }
-
-        int lookAhead = lookAheadSpan(player, dx, dz);
-        boolean wideOpen = true;
-        for (int i = 1; i < lookAhead; i++) {
-            int px = x + dx * i;
-            int pz = z + dz * i;
-            // 那一格要空、而且往下也接不住人，才算「虚空在这个方向继续延伸」。
-            // 少了后半句，比周围矮一层的台地/台阶也会被当成大片虚空——
-            // 它上方那一格确实是空气，但踩下去只有一格的落差。
-            if (!isEmptyAt(world, px, y, pz)
-                    || hasLandingBelow(world, px, y, pz, BridgeConfig.edgeDropDepth)) {
-                wideOpen = false;
-                break;
-            }
-        }
-        if (wideOpen && lookAhead > 1) {
             return true;
         }
-        return !hasLandingBelow(world, x, y, z, BridgeConfig.edgeDropDepth);
-    }
 
-    /**
-     * 沿这个方向往外看几格。
-     *
-     * <p>基础值是 edgeLookAhead；如果玩家正在<b>朝这个方向</b>移动、且速度超过 fastApproachSpeed，
-     * 就再看多一格 —— 潜行要 1 tick 才同步到服务端，这段时间玩家还在往虚空里走，
-     * 冲得越快走得越远，越需要提前把悬崖算出来。反方向移动（approach 为负）不加码。
-     */
-    private static int lookAheadSpan(ClientPlayerEntity player, int dx, int dz) {
-        int base = Math.max(2, BridgeConfig.edgeLookAhead);
-        if (dx == 0 && dz == 0) {
-            return base;
-        }
-        double approach = player.getVelocity().x * dx + player.getVelocity().z * dz;
-        return approach >= BridgeConfig.fastApproachSpeed ? base + 1 : base;
-    }
-
-    /**
-     * 从 (x, y-1, z) 开始往下探 depth 格，看有没有「能站住人的落脚面」。
-     *
-     * <p>光碰到一个方块不算数 —— 孤立的单格方块、一格宽的窄梁都接不住人（人从旁边擦过去继续往下掉），
-     * 那种情况仍然算「没有落脚点」。要求那一层附近够大才算，见 {@link #landingAreaAt}。
-     */
-    private static boolean hasLandingBelow(World world, int x, int y, int z, int depth) {
-        for (int i = 1; i <= depth; i++) {
-            int probeY = y - i;
-            if (probeY < world.getBottomY()) {
-                return false;
-            }
-            if (isEmptyAt(world, x, probeY, z)) {
-                continue;
-            }
-            if (landingAreaAt(world, x, probeY, z) >= BridgeConfig.landingArea) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /** (x, y, z) 这一层附近 3×3 里有几格是实心的 —— 用来判断那块地够不够站人。 */
-    private static int landingAreaAt(World world, int x, int y, int z) {
-        int solid = 0;
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dz = -1; dz <= 1; dz++) {
-                if (!isEmptyAt(world, x + dx, y, z + dz)) {
-                    solid++;
-                }
-            }
-        }
-        return solid;
+        // ③ 贴着某条边界，且那一边的相邻格是空的
+        return (cx - bx < m && isEmptyAt(world, bx - 1, y, bz))
+                || ((bx + 1) - cx < m && isEmptyAt(world, bx + 1, y, bz))
+                || (cz - bz < m && isEmptyAt(world, bx, y, bz - 1))
+                || ((bz + 1) - cz < m && isEmptyAt(world, bx, y, bz + 1));
     }
 
     private static boolean isEmptyAt(World world, int x, int y, int z) {

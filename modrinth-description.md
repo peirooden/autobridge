@@ -4,19 +4,33 @@ A **client-side** bridging assistant for Minecraft **1.20.1 (Fabric)**. It takes
 
 Bridging a gap by hand is fiddly: hold sneak, line the crosshair up on the side of the block right at the edge, and click at the exact moment. Miss the timing and you drop into the void. AutoBridge handles the two fiddly parts and leaves you the two fun parts.
 
+**You start it yourself, and it stops by itself.** Crouch on a block edge, look down at your feet, and place one block into the cell directly below you. That placement is the start signal; from then on AutoBridge takes over. Once you stop placing for three seconds, it hands control back.
+
 ---
 
 ## What it does
 
-- **Auto-sneak at edges** — as soon as you stand on the dangerous edge of a block while holding a block item, AutoBridge holds sneak for you. Sneaking is what makes vanilla treat your right-click as *place a block* instead of *interact with a block*.
-- **Auto right-click** — once your crosshair lands on a valid spot, AutoBridge clicks for you. Walk forward, and you bridge.
+- **You decide when it starts** — it does nothing on its own. It waits until you crouch on an edge, look down, and place one block under your feet. That way it never surprises you while you are just walking around.
+- **Auto-sneak, only on edges** — while active, AutoBridge holds sneak for you *only while you are on a block edge*, and releases it the moment you leave. Sneaking is what makes vanilla treat your right-click as *place a block* instead of *interact with a block*; holding it permanently would cut your movement speed to 30%.
+- **Auto right-click** — once your crosshair lands on a valid spot, AutoBridge clicks for you. Walk backward, and you bridge.
+- **Stops by itself** — three seconds without a placement that the world actually confirms, and it returns to idle.
 - **Never touches your camera** — no rotation is ever written. Not a single yaw or pitch value. Aiming is 100% your real mouse input.
 - **Never touches your movement** — no key presses are simulated for walking, sprinting, or jumping. If you jump, AutoBridge immediately releases sneak and stays out of the way for the whole jump.
-- **Hands off when you're not bridging** — empty-handed? It won't force-sneak you at every cliff. Holding right-click yourself? It steps aside and lets vanilla handle it.
+- **Hands off when you're not bridging** — while idle it touches neither sneak nor right-click. Holding right-click yourself? It steps aside and lets vanilla handle it.
 
 ## How it decides
 
-AutoBridge runs once per client tick and checks, in order:
+**Starting.** All five of these must hold:
+
+| # | Condition |
+|---|---|
+| ① | You are sneaking — while idle the mod does not touch the key, so this can only be you |
+| ② | You were on a block edge within the last few ticks |
+| ③ | You are looking down past the startup angle (default 77°) |
+| ④ | Your main hand holds a `BlockItem` |
+| ⑤ | The cell directly below you went from empty to solid — you just placed a block there |
+
+**Placing.** While active, each tick is checked in order:
 
 1. Your crosshair is on a block.
 2. Your main hand holds a `BlockItem`.
@@ -29,6 +43,8 @@ AutoBridge runs once per client tick and checks, in order:
 9. The geometry matches: same layer as the block under your feet, 1–2 blocks horizontally, and in the **opposite direction of your view** (behind you).
 
 If anything fails, nothing happens and no click is sent.
+
+**Stopping.** Three seconds (60 ticks) without a confirmed placement. The timer is reset by placements **the world actually confirms**, not by clicks sent — each click is followed up by checking the target cell on the next tick.
 
 ## Requirements
 
@@ -45,12 +61,10 @@ AutoBridge registers **no in-game keybindings** — the "Key Binds" menu stays c
 | Setting | Default | What it does |
 | :--- | :--- | :--- |
 | Auto mode | On | Master on/off switch |
+| Startup pitch | 77° | How far down you must be looking to start (65 / 70 / 77 / 83) |
+| Idle timeout | 3 s | How long without a confirmed placement before it stops (1–5 s) |
 | Placement direction | Behind view | Fixed to behind-view |
-| Edge threshold | 0.03 | How close to the block edge counts as "at the edge" |
-| Danger check depth | 3 | How far down to look before calling a drop dangerous |
-| Horizontal look-ahead | 2 | How many blocks outward must be empty to count as a real gap |
-| Landing area | 5 / 9 | Minimum solid blocks in a 3×3 to count as a safe landing |
-| Approach speed threshold | 0.25 | Speed at which the look-ahead distance is increased |
+| Edge threshold | 0.03 | How close to the block edge counts as "at the edge" — smaller is stricter |
 | Debug HUD | Off | On-screen diagnostics |
 
 Settings are saved to `config/autobridge.properties` and persist between sessions.
@@ -74,4 +88,4 @@ The whole mod is client-side. It is never loaded on a dedicated server.
 
 ## License
 
-_License text here._
+MIT

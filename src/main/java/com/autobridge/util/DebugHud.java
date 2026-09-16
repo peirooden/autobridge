@@ -45,9 +45,40 @@ public final class DebugHud {
 
         // 标题
         String mode = BridgeConfig.autoMode ? "AUTO(常开)" : "已关闭";
-        boolean active = AutoBridgeClient.CONTROLLER.isActive();
+        boolean bridging = AutoBridgeClient.CONTROLLER.isBridging();
         context.drawTextWithShadow(client.textRenderer,
-                "AutoBridge  " + mode + "  " + (active ? "激活中" : "未激活"), x, y, active ? GREEN : GRAY);
+                "AutoBridge  " + mode + "  " + (bridging ? "搭路中" : "待机"), x, y, bridging ? GREEN : GRAY);
+        y += step;
+
+        // 状态：待机阶段在等启动信号；接管阶段显示还有多久超时
+        int idleTicks = AutoBridgeClient.CONTROLLER.getIdleTicks();
+        int timeout = Math.max(1, BridgeConfig.idleTimeoutTicks);
+        var ctrl = AutoBridgeClient.CONTROLLER;
+        if (!BridgeConfig.autoMode) {
+            context.drawTextWithShadow(client.textRenderer,
+                    "状态: 已关闭（ModMenu 里打开）", x, y, GRAY);
+        } else if (bridging) {
+            // 潜行是「在边缘才按」——所以要显示当前到底按没按，否则看不出它是不是卡住了
+            boolean sneakingNow = ctrl.isActive();
+            double left = Math.max(0.0D, (timeout - idleTicks) / 20.0D);
+            context.drawTextWithShadow(client.textRenderer,
+                    String.format("状态: 搭路中 [%s] —— 还有 %.1f 秒无放置就结束",
+                            sneakingNow ? "边缘潜行中" : "不在边缘·潜行已松", left),
+                    x, y, sneakingNow ? GREEN : YELLOW);
+        } else {
+            context.drawTextWithShadow(client.textRenderer,
+                    "状态: 待机 —— 蹲在边缘 + 低头 + 在脚下一格放一块启动", x, y, YELLOW);
+            y += step;
+
+            // 五个启动条件各自的实时状态：一眼看出卡在哪一条
+            context.drawTextWithShadow(client.textRenderer,
+                    "  条件: 蹲" + mark(ctrl.isIdleSneaking())
+                            + " 边缘" + mark(ctrl.isIdleOnEdge())
+                            + " 低头" + mark(ctrl.isIdleHeadDown())
+                            + " 手持" + mark(ctrl.isIdleHolding())
+                            + " 脚下已放" + mark(ctrl.isIdleFootSolid()),
+                    x, y, WHITE);
+        }
         y += step;
 
         // 方向
@@ -69,19 +100,18 @@ public final class DebugHud {
         }
         y += step;
 
-        // 俯仰角：命中侧面需要把视角压下去
+        // 俯仰角：命中侧面需要把视角压下去。
+        // ⚠️ 正数 = 向下看（+90 是垂直看脚底），负数 = 抬头看天。
         context.drawTextWithShadow(client.textRenderer,
-                "俯仰角: " + String.format("%.0f", player.getPitch()) + "°   命中侧面通常要 -45° ~ -70°",
+                "俯仰角: " + String.format("%.0f", player.getPitch()) + "°   瞄到侧面约 +77° ~ +83°",
                 x, y, WHITE);
         y += step;
 
-        // 是否站在边缘 —— AUTO 就是靠这个激活的
+        // 是否站在边缘 —— 接管期间就是靠这个决定潜行按不按
         boolean onEdge = BridgeValidator.isOnBlockEdge(player, client.world);
         context.drawTextWithShadow(client.textRenderer,
                 "站在边缘: " + (onEdge ? "是" : "否")
-                        + "  阈值=" + String.format("%.2f", BridgeConfig.edgeMargin) + "格 [N键切换]"
-                        + "  往外看=" + BridgeConfig.edgeLookAhead + "格"
-                        + (BridgeConfig.autoMode ? "  [AUTO 靠这个激活]" : ""),
+                        + "  阈值=" + String.format("%.2f", BridgeConfig.edgeMargin) + "格",
                 x, y, onEdge ? GREEN : GRAY);
         y += step;
 
@@ -128,26 +158,29 @@ public final class DebugHud {
                 x, y, WHITE);
         y += step;
 
-        // 触发计数：用来确认模组真的在动
+        // 触发计数：用来确认模组真的在动。发起次数 vs 世界确认成功次数分开显示，
+        // 两者差得多就说明右键发出去了但没放成（被服务端拒绝或还在冷却）。
         int count = AutoBridgeClient.CONTROLLER.getPlaceCount();
+        int confirmed = AutoBridgeClient.CONTROLLER.getConfirmedPlaceCount();
         int lastAt = AutoBridgeClient.CONTROLLER.getLastPlaceAt();
         int now = AutoBridgeClient.CONTROLLER.getTickCounter();
         String ago = (lastAt < 0) ? "从未" : ((now - lastAt) / 20) + "秒前";
         context.drawTextWithShadow(client.textRenderer,
-                "已模拟右键: " + count + " 次   最近: " + ago,
+                "模拟右键: " + count + " 次   确认放成: " + confirmed + " 次   最近: " + ago,
                 x, y, count > 0 ? GREEN : GRAY);
     }
 
     /** 把"被哪一条挡下"翻译成"下一步该做什么"。 */
     private static String buildHint(BridgeValidator.Result result, BlockHitResult blockHit) {
         if (!BridgeConfig.autoMode) {
-            return "自动搭路已关闭 → 在 ModMenu 里打开，或按右 Alt";
+            return "自动搭路已关闭 → 在 ModMenu 里打开";
         }
 
-        // ---- 边缘搭路的提示 ----
-        if (!AutoBridgeClient.CONTROLLER.isActive()) {
-            return "AUTO：走到方块边缘就会自动潜行并尝试放置";
+        // ---- 还没启动：告诉玩家怎么启动 ----
+        if (!AutoBridgeClient.CONTROLLER.isBridging()) {
+            return "启动方式：蹲在方块边缘 + 低头看脚底 + 在脚下一格放一块方块";
         }
+
         if (blockHit == null) {
             return "准星没打到方块：低头看脚边的方块";
         }
@@ -165,7 +198,7 @@ public final class DebugHud {
             return "离脚下方块太远，往目标方块靠近一点";
         }
         if (r.contains("方向")) {
-            return "方向不对：按 B 轮换方向模式";
+            return "方向不对：方块要放在视角反方向（身后）";
         }
         if (r.contains("未潜行")) {
             return "潜行刚按下（要 1 tick 同步到服务端），按住别松";
@@ -187,5 +220,10 @@ public final class DebugHud {
 
     private static String fmt(BlockPos pos) {
         return "(" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + ")";
+    }
+
+    /** 条件满足打 ✓，不满足打 ✗。 */
+    private static String mark(boolean ok) {
+        return ok ? "✓" : "✗";
     }
 }

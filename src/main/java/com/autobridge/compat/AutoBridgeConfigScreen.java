@@ -18,10 +18,13 @@ public class AutoBridgeConfigScreen extends Screen {
 
     private static final int BUTTON_WIDTH = 220;
     private static final int BUTTON_HEIGHT = 20;
-    private static final int GAP = 24;
+    private static final int GAP = 22;
 
-    /** fastApproachSpeed 的候选档位（格/tick），点一下轮换一档。 */
-    private static final double[] FAST_APPROACH_STEPS = {0.15D, 0.20D, 0.25D, 0.30D, 0.40D};
+    /** 启动搭路所需的低头角度候选（俯仰角，<b>正数向下</b>）。用户实测瞄侧面约 +77°~+83°。 */
+    private static final double[] LOW_HEAD_STEPS = {65.0D, 70.0D, 77.0D, 83.0D};
+
+    /** 空闲超时的候选秒数。 */
+    private static final int[] IDLE_TIMEOUT_STEPS = {1, 2, 3, 4, 5};
 
     /** ModMenu 会把上一级界面传进来，点「完成」要还回去。 */
     private final Screen parent;
@@ -34,12 +37,42 @@ public class AutoBridgeConfigScreen extends Screen {
     @Override
     protected void init() {
         int x = this.width / 2 - BUTTON_WIDTH / 2;
-        int y = this.height / 4;
+        int y = this.height / 8;
 
         addDrawableChild(ButtonWidget.builder(autoModeText(), button -> {
             BridgeConfig.autoMode = !BridgeConfig.autoMode;
             BridgeConfig.save();
             button.setMessage(autoModeText());
+        }).dimensions(x, y, BUTTON_WIDTH, BUTTON_HEIGHT).build());
+        y += GAP;
+
+        addDrawableChild(ButtonWidget.builder(lowHeadText(), button -> {
+            int idx = 0;
+            for (int i = 0; i < LOW_HEAD_STEPS.length; i++) {
+                if (Math.abs(LOW_HEAD_STEPS[i] - BridgeConfig.lowHeadPitch) < 1.0E-6D) {
+                    idx = i;
+                    break;
+                }
+            }
+            BridgeConfig.lowHeadPitch = LOW_HEAD_STEPS[(idx + 1) % LOW_HEAD_STEPS.length];
+            BridgeConfig.save();
+            button.setMessage(lowHeadText());
+        }).dimensions(x, y, BUTTON_WIDTH, BUTTON_HEIGHT).build());
+        y += GAP;
+
+        addDrawableChild(ButtonWidget.builder(idleTimeoutText(), button -> {
+            int idx = 0;
+            int current = Math.round(BridgeConfig.idleTimeoutTicks / 20.0F);
+            for (int i = 0; i < IDLE_TIMEOUT_STEPS.length; i++) {
+                if (IDLE_TIMEOUT_STEPS[i] == current) {
+                    idx = i;
+                    break;
+                }
+            }
+            int seconds = IDLE_TIMEOUT_STEPS[(idx + 1) % IDLE_TIMEOUT_STEPS.length];
+            BridgeConfig.idleTimeoutTicks = seconds * 20;
+            BridgeConfig.save();
+            button.setMessage(idleTimeoutText());
         }).dimensions(x, y, BUTTON_WIDTH, BUTTON_HEIGHT).build());
         y += GAP;
 
@@ -52,41 +85,6 @@ public class AutoBridgeConfigScreen extends Screen {
         addDrawableChild(ButtonWidget.builder(edgeMarginText(), button -> {
             BridgeConfig.cycleEdgeMargin();
             button.setMessage(edgeMarginText());
-        }).dimensions(x, y, BUTTON_WIDTH, BUTTON_HEIGHT).build());
-        y += GAP;
-
-        addDrawableChild(ButtonWidget.builder(dropDepthText(), button -> {
-            BridgeConfig.edgeDropDepth = BridgeConfig.edgeDropDepth >= 5 ? 1 : BridgeConfig.edgeDropDepth + 1;
-            BridgeConfig.save();
-            button.setMessage(dropDepthText());
-        }).dimensions(x, y, BUTTON_WIDTH, BUTTON_HEIGHT).build());
-        y += GAP;
-
-        addDrawableChild(ButtonWidget.builder(landingAreaText(), button -> {
-            BridgeConfig.landingArea = BridgeConfig.landingArea >= 9 ? 1 : BridgeConfig.landingArea + 1;
-            BridgeConfig.save();
-            button.setMessage(landingAreaText());
-        }).dimensions(x, y, BUTTON_WIDTH, BUTTON_HEIGHT).build());
-        y += GAP;
-
-        addDrawableChild(ButtonWidget.builder(lookAheadText(), button -> {
-            BridgeConfig.edgeLookAhead = BridgeConfig.edgeLookAhead >= 4 ? 2 : BridgeConfig.edgeLookAhead + 1;
-            BridgeConfig.save();
-            button.setMessage(lookAheadText());
-        }).dimensions(x, y, BUTTON_WIDTH, BUTTON_HEIGHT).build());
-        y += GAP;
-
-        addDrawableChild(ButtonWidget.builder(fastApproachText(), button -> {
-            int idx = 0;
-            for (int i = 0; i < FAST_APPROACH_STEPS.length; i++) {
-                if (Math.abs(FAST_APPROACH_STEPS[i] - BridgeConfig.fastApproachSpeed) < 1.0E-6D) {
-                    idx = i;
-                    break;
-                }
-            }
-            BridgeConfig.fastApproachSpeed = FAST_APPROACH_STEPS[(idx + 1) % FAST_APPROACH_STEPS.length];
-            BridgeConfig.save();
-            button.setMessage(fastApproachText());
         }).dimensions(x, y, BUTTON_WIDTH, BUTTON_HEIGHT).build());
         y += GAP;
 
@@ -105,7 +103,7 @@ public class AutoBridgeConfigScreen extends Screen {
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         this.renderBackground(context);
         context.drawCenteredTextWithShadow(this.textRenderer, this.title,
-                this.width / 2, this.height / 4 - 26, 0xFFFFFF);
+                this.width / 2, this.height / 8 - 20, 0xFFFFFF);
         super.render(context, mouseX, mouseY, delta);
     }
 
@@ -124,28 +122,21 @@ public class AutoBridgeConfigScreen extends Screen {
         return Text.literal("自动搭路模式：" + (BridgeConfig.autoMode ? "开" : "关"));
     }
 
+    private static Text lowHeadText() {
+        return Text.literal(String.format(Locale.ROOT, "启动低头角度：+%.0f°（正数=低头）", BridgeConfig.lowHeadPitch));
+    }
+
+    private static Text idleTimeoutText() {
+        return Text.literal(String.format(Locale.ROOT, "搭路超时：%.1f 秒无放置结束",
+                BridgeConfig.idleTimeoutTicks / 20.0F));
+    }
+
     private static Text directionText() {
         return Text.literal("放置方向：" + BridgeConfig.directionName());
     }
 
     private static Text edgeMarginText() {
-        return Text.literal(String.format(Locale.ROOT, "边缘判定阈值：%.2f 格", BridgeConfig.edgeMargin));
-    }
-
-    private static Text dropDepthText() {
-        return Text.literal("危险判定深度：" + BridgeConfig.edgeDropDepth + " 格");
-    }
-
-    private static Text lookAheadText() {
-        return Text.literal("水平延伸跨度：" + BridgeConfig.edgeLookAhead + " 格");
-    }
-
-    private static Text landingAreaText() {
-        return Text.literal("落脚面最小面积：" + BridgeConfig.landingArea + " / 9 格");
-    }
-
-    private static Text fastApproachText() {
-        return Text.literal(String.format(Locale.ROOT, "加速判定阈值：%.2f 格/刻", BridgeConfig.fastApproachSpeed));
+        return Text.literal(String.format(Locale.ROOT, "边缘判定阈值：%.2f 格（越小越严）", BridgeConfig.edgeMargin));
     }
 
     private static Text hudText() {
