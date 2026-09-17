@@ -44,7 +44,7 @@ public final class DebugHud {
         int step = 10;
 
         // 标题：模式后面带上当前搭路方式（蹲搭 / 神桥）—— 两个方式来回测时一眼能看出在跑哪个
-        String mode = BridgeConfig.autoMode ? "AUTO(常开)" : "已关闭";
+        String mode = BridgeConfig.autoMode ? "AUTO" : "已关闭";
         boolean bridging = AutoBridgeClient.CONTROLLER.isBridging();
         context.drawTextWithShadow(client.textRenderer,
                 "AutoBridge  " + mode + "·" + BridgeConfig.bridgeMode.displayName()
@@ -54,7 +54,6 @@ public final class DebugHud {
         // 状态：待机阶段在等启动信号；接管阶段显示还有多久超时
         int idleTicks = AutoBridgeClient.CONTROLLER.getIdleTicks();
         int timeout = Math.max(1, BridgeConfig.idleTimeoutTicks);
-        var ctrl = AutoBridgeClient.CONTROLLER;
         if (!BridgeConfig.autoMode) {
             context.drawTextWithShadow(client.textRenderer,
                     "状态: 已关闭（ModMenu 里打开）", x, y, GRAY);
@@ -67,16 +66,6 @@ public final class DebugHud {
         } else {
             context.drawTextWithShadow(client.textRenderer,
                     "状态: 待机 —— 蹲在边缘 + 低头 + 在脚下一格放一块启动", x, y, YELLOW);
-            y += step;
-
-            // 五个启动条件各自的实时状态：一眼看出卡在哪一条
-            context.drawTextWithShadow(client.textRenderer,
-                    "  条件: 蹲" + mark(ctrl.isIdleSneaking())
-                            + " 边缘" + mark(ctrl.isIdleOnEdge())
-                            + " 低头" + mark(ctrl.isIdleHeadDown())
-                            + " 手持" + mark(ctrl.isIdleHolding())
-                            + " 脚下已放" + mark(ctrl.isIdleFootSolid()),
-                    x, y, WHITE);
         }
         y += step;
 
@@ -148,17 +137,11 @@ public final class DebugHud {
         int confirmed = AutoBridgeClient.CONTROLLER.getConfirmedPlaceCount();
         double avg = AutoBridgeClient.CONTROLLER.getAverageBlocksPerSecond();
         context.drawTextWithShadow(client.textRenderer,
-                "放成: " + confirmed + " 次   平均 " + String.format("%.2f", avg)
-                        + " 块/秒（原版按住上限 5 次/秒）",
+                "放成: " + confirmed + " 次   平均 " + String.format("%.2f", avg) + " 块/秒",
                 x, y, confirmed > 0 ? GREEN : GRAY);
     }
 
     private static String fmt(BlockPos pos) {
         return "(" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + ")";
-    }
-
-    /** 条件满足打 ✓，不满足打 ✗。 */
-    private static String mark(boolean ok) {
-        return ok ? "✓" : "✗";
     }
 }

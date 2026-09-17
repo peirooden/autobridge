@@ -129,9 +129,8 @@ Every click saves immediately; the button always shows the real current value. S
 The dev edition renders this in the top-left (the in-game labels are in Chinese; they're translated here for readability):
 
 ```
-AutoBridge  AUTO(on)·Crouch  idle
+AutoBridge  AUTO·Crouch  idle
 State: idle — crouch on an edge, look down, place one block below you
-  Conditions: sneakX edgeX pitchX holdX placed-below√
 Crosshair: (12, 63, -8) face=north dist=1.87
 Pitch: 81°  (head-on side face +79°~+84°; corners can go shallower)
 Standing on edge: yes  threshold=0.03 blocks
@@ -139,10 +138,10 @@ Standing on: (12, 62, -8)
 Expected: (12, 62, -9)
 Actual: -
 Sneak: no  forcedSneak=true  holding=Block{minecraft:stone}
-Placed: 75   avg 4.85 blocks/s (vanilla hold cap 5/s)
+Placed: 75   avg 4.85 blocks/s
 ```
 
-**The "Conditions" line is the useful one while starting up** — it shows, live, which of the five startup conditions is failing.
+**The `Pitch` and `Standing on edge` lines are the two to watch while starting up** — with the startup conditions settled, they are what most often explains a launch that doesn't happen.
 
 **The `Placed` line is the one that tells you whether bridging actually keeps up.** It counts only placements the world confirmed, and the average is measured from the first placement of the current run, so idle time doesn't dilute it. Walking speed is 4.317 blocks/s, so anything around 4–5 means the mod is keeping up with you.
 
@@ -188,19 +187,17 @@ Manual install: drop the **user** jar (`autobridge-0.3.0.jar`) into `.minecraft/
 
 ## FAQ
 
-**The mod does nothing.** It stays idle until you start it. The HUD's "Conditions" line shows which of the five startup conditions is failing:
+**The mod does nothing.** It stays idle until you start it, and it only starts when all five startup conditions hold at once (see *Starting and stopping*). In practice: crouch on an edge, look down at your feet, place one block under yourself.
 
-- `sneakX` → you are not sneaking. While idle the mod does not touch the sneak key, so this has to come from you.
-- `edgeX` → you are not on an edge (see *What counts as an edge* above).
-- `pitchX` → you are not looking down far enough (the gate is 60°). **Standing on top of a block you mathematically cannot see its side faces** — you have to be at the edge and looking down steeply: head-on that means roughly 79°–84°, and standing diagonally on a corner 60°–70° is enough because the ray travels further horizontally.
-- `holdX` → your main hand is not a block.
-- `placed-belowX` → the mod has not seen a block appear in the layer below you. That HUD indicator reflects only the cell directly under your centre; the start signal itself watches the whole 3×3 layer, so standing diagonally on a corner this can read `X` while the launch still works.
+The usual reasons it doesn't catch:
 
-During bridging, blocked placements are named on the HUD's `Result:` line:
+- You are not sneaking yourself. While idle the mod does not touch the sneak key, so this has to come from you.
+- You are not on an edge (see *What counts as an edge* above).
+- You are not looking down far enough — the gate is 60°. **Standing on top of a block you mathematically cannot see its side faces**, so you have to be at the edge and looking down steeply. Head-on that means roughly 79°–84°; standing diagonally on a corner 60°–70° is enough, because the ray travels further horizontally.
+- Your main hand is not a block.
+- Nothing appeared in the layer below you. The start signal watches the whole 3×3 layer, so standing diagonally on a corner still works.
 
-- `not sneaking` → forced sneak isn't taking effect.
-- `crosshair not on a block` → your view isn't low enough.
-- `target not on the foot layer` / `not in the opposite direction of view` → the target landed somewhere unexpected; compare the "Expected" and "Actual" coordinates on the HUD.
+Blocked placements are recorded in the dev build's log, one `DENIED: <reason>` line each (the user edition emits none; the reason text is in Chinese). The two common ones are "the placement cell overlaps your own hitbox" — your view is too shallow for the cell your crosshair is on — and "you are aiming at the top face", which condition ⑧ rejects.
 
 **It placed a block when I aimed at the top face.** It shouldn't — condition ⑧ rejects top and bottom faces. If you see this, the dev build logs one line per confirmed placement (`放成 #N: placePos=... hit=... pitch=... δ=... δtan=... 距上一块 N tick`) recording the face and the aim geometry; please report it with that line.
 
