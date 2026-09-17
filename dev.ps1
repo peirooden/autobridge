@@ -1,4 +1,4 @@
-# AutoBridge 便捷构建/运行脚本
+﻿# AutoBridge 便捷构建/运行脚本
 #
 #   用法：
 #     .\dev.ps1 build        构建【用户版】jar（默认关 HUD、无诊断日志）
@@ -61,10 +61,14 @@ if (-not $jdk) {
 
 $env:JAVA_HOME = $jdk
 $env:Path = "$jdk\bin;$env:Path"
-# 这台机器上 Java 直连部分 CDN（services.gradle.org / repo1.maven.org）不通，必须走本地代理
-$env:JAVA_OPTS = "-Djava.net.preferIPv4Stack=true " +
-    "-Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=7890 " +
-    "-Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=7890"
+# 这里刻意不设代理。本机 Java 直连 maven.fabricmc.net / libraries.minecraft.net /
+# piston-meta.mojang.com 都通，本项目构建所需的依赖全在这几个源上；
+# 而 Gradle 发行版已指向本地 file:// 的 zip，也不需要 services.gradle.org。
+# 反之，一旦在这里写死代理，Clash Verge 没开的时候整个构建会连带失败
+# （连直连能通的 Fabric 仓库也一起挂）。确实需要代理时再手动加：
+#   $env:JAVA_OPTS = "-Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=7890 " +
+#                    "-Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=7890"
+$env:JAVA_OPTS = "-Djava.net.preferIPv4Stack=true"
 Write-Host "[AutoBridge] JAVA_HOME = $jdk" -ForegroundColor Cyan
 Write-Host "[AutoBridge] gradle $($Task -join ' ')" -ForegroundColor Cyan
 

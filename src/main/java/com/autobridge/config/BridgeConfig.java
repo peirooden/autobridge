@@ -43,27 +43,36 @@ public final class BridgeConfig {
     }
 
     /**
-     * 搭路方式。要加新方式就往这里加一项，并在 {@code BridgeValidator} 的几何分派里补一个分支。
+     * 搭路方式（0.3.0 起两项，只在 ModMenu 设置界面里切换）。
+     *
+     * <p>两种方式<b>只在「接管期间潜不潜行」这一点上分叉</b>：启动条件、校验链、模拟右键、
+     * 世界状态验收、超时退出全部共用。
      */
     public enum BridgeMode {
 
         /**
-         * 自动搭路 —— <b>唯一的方式</b>：
+         * 蹲搭（原普通版）：贴着边缘时由模组强制潜行。
          *
          * <pre>
-         *   站在方块边缘    → 模组自动潜行（这样右键=放置而不是交互）
+         *   站在方块边缘    → 模组自动潜行（右键=放置而不是交互；移速 ×0.3，放置跟得上）
          *   准星瞄到合法位置 → 模拟右键放置（走原版路径）
          *   人走过去        → 又站到新的边缘 → 循环
          * </pre>
          *
          * <p>潜行由模组接管；玩家一按跳跃就立刻松开潜行让开
          * （原版潜行会屏蔽跳跃，玩家想跳下去时必须不挡路）。
-         *
-         * <p>「空中/跳跃时补一格」那套已经整个删掉了 —— 详见对应的 lesson 记忆。
-         * 新增方式时：在这里加一项，再在 {@code BridgeValidator} 的几何分派、
-         * 以及 {@code BridgeController.tickStart} 的分派里各加一个 {@code case}。
          */
-        AUTO_BRIDGE("自动搭路");
+        SNEAK_BRIDGE("蹲搭"),
+
+        /**
+         * 神桥（原特殊版）：接管期间<b>完全不潜行</b>。
+         *
+         * <p>没有潜行就没有原版的边缘保护，改由 {@code PlayerEntityClipMixin} 注入
+         * {@code clipAtLedge} 打开原版钳制，把人钉在边缘上；放置走原版按住右键
+         * （{@code itemUseCooldown} 决定的 5 次/秒），跟得上行走的 4.317 格/秒。
+         * 潜行键一次都不碰 —— 玩家自己按着就按着、松着就松着。
+         */
+        GOD_BRIDGE("神桥");
 
         private final String displayName;
 
@@ -87,11 +96,11 @@ public final class BridgeConfig {
     public static DirectionMode directionMode = DirectionMode.BEHIND_VIEW;
 
     /**
-     * 当前搭路方式。目前只有 AUTO_BRIDGE 一项 —— 边缘潜行与空中补格是同一个机制，
-     * 不是两种可以切换的东西，所以既没有 M 键也没有配置界面里的切换按钮。
-     * 枚举本身留着当扩展点：以后真要加第二种方式，在这里加一项 + 两处 case 即可。
+     * 当前搭路方式，默认「蹲搭」—— 与 0.2.0 的行为完全一致。
+     *
+     * <p>只能在 ModMenu 设置界面里切换（游戏内没有对应按键）。
      */
-    public static BridgeMode bridgeMode = BridgeMode.AUTO_BRIDGE;
+    public static BridgeMode bridgeMode = BridgeMode.SNEAK_BRIDGE;
 
     /**
      * 「站在边缘」的判定余量（格）：玩家中心到方块外沿不足这个距离，才算站到了边缘。
@@ -121,11 +130,15 @@ public final class BridgeConfig {
      * <p>⚠️ Minecraft 的 {@code Entity#getPitch()} 约定：<b>+90 是垂直向下看脚底，
      * -90 才是抬头看天</b>。所以低头是<b>正</b>值，别写反。
      *
-     * <p>用户实测：能把准星压到脚下方块<i>侧面</i>的俯仰角大约在 <b>+77° ~ +83°</b>。
-     * 低于这个范围射线会越过方块落到更远的顶面上，根本瞄不到侧面。
-     * 默认 77，即"确实在看脚底"的程度。
+     * <p><b>它只是「启动闸门」，不是「可用瞄准带」</b>：方块到底能不能放成，由校验链的几何
+     * （必须真的瞄到脚下方块侧面）把关 —— 所以闸门放宽不会放出歪方块，只是让"还在调角度"
+     * 时也可能先接管。
+     *
+     * <p>正面站着瞄侧面约 +79°~+84°（潜行 +77°~+83°）；但<b>斜着站在方块角落（对角线边缘）
+     * 时水平距离更长，可以浅很多</b>。2026-09-17 实测：用户在那个姿势下自然瞄的是
+     * <b>61°~65°</b>（他说 60° 左右已经算极限）。所以下限定 <b>60</b> —— 再浅就不像在看脚底了。
      */
-    public static double lowHeadPitch = 77.0D;
+    public static double lowHeadPitch = 60.0D;
 
     /**
      * 搭路启动后，连续这么多 tick 没有「成功放置」就自动结束、回到待机。
@@ -260,6 +273,13 @@ public final class BridgeConfig {
     public static void cycleDirection() {
         DirectionMode[] all = DirectionMode.values();
         directionMode = all[(directionMode.ordinal() + 1) % all.length];
+        save();
+    }
+
+    /** 依次轮换搭路方式（蹲搭 ↔ 神桥），并立刻存盘。只在 ModMenu 设置界面里改。 */
+    public static void cycleBridgeMode() {
+        BridgeMode[] all = BridgeMode.values();
+        bridgeMode = all[(bridgeMode.ordinal() + 1) % all.length];
         save();
     }
 

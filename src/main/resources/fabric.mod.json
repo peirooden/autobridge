@@ -3,7 +3,7 @@
   "id": "autobridge",
   "version": "${version}",
   "name": "AutoBridge",
-  "description": "Client-side bridging assistant. Simulates only sneaking and right-clicking through vanilla's own input path, never modifies your camera or movement.",
+  "description": "Client-side bridging assistant with two modes (Crouch / God Bridge). Everything goes through vanilla's own input path - no custom packets, no camera changes.",
   "authors": [
     "peirooden"
   ],
@@ -15,6 +15,9 @@
   "license": "MIT",
   "icon": "assets/autobridge/icon.png",
   "environment": "client",
+  "mixins": [
+    "autobridge.mixins.json"
+  ],
   "entrypoints": {
     "client": [
       "com.autobridge.AutoBridgeClient"

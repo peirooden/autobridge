@@ -20,9 +20,6 @@ public class AutoBridgeConfigScreen extends Screen {
     private static final int BUTTON_HEIGHT = 20;
     private static final int GAP = 22;
 
-    /** 启动搭路所需的低头角度候选（俯仰角，<b>正数向下</b>）。用户实测瞄侧面约 +77°~+83°。 */
-    private static final double[] LOW_HEAD_STEPS = {65.0D, 70.0D, 77.0D, 83.0D};
-
     /** 空闲超时的候选秒数。 */
     private static final int[] IDLE_TIMEOUT_STEPS = {1, 2, 3, 4, 5};
 
@@ -46,20 +43,14 @@ public class AutoBridgeConfigScreen extends Screen {
         }).dimensions(x, y, BUTTON_WIDTH, BUTTON_HEIGHT).build());
         y += GAP;
 
-        addDrawableChild(ButtonWidget.builder(lowHeadText(), button -> {
-            int idx = 0;
-            for (int i = 0; i < LOW_HEAD_STEPS.length; i++) {
-                if (Math.abs(LOW_HEAD_STEPS[i] - BridgeConfig.lowHeadPitch) < 1.0E-6D) {
-                    idx = i;
-                    break;
-                }
-            }
-            BridgeConfig.lowHeadPitch = LOW_HEAD_STEPS[(idx + 1) % LOW_HEAD_STEPS.length];
-            BridgeConfig.save();
-            button.setMessage(lowHeadText());
+        addDrawableChild(ButtonWidget.builder(bridgeModeText(), button -> {
+            BridgeConfig.cycleBridgeMode();
+            button.setMessage(bridgeModeText());
         }).dimensions(x, y, BUTTON_WIDTH, BUTTON_HEIGHT).build());
         y += GAP;
 
+        // 「启动低头角度」按用户要求从菜单移除：扩展点留在 BridgeConfig.lowHeadPitch（默认 77），
+        // 但不暴露成用户可见的开关。
         addDrawableChild(ButtonWidget.builder(idleTimeoutText(), button -> {
             int idx = 0;
             int current = Math.round(BridgeConfig.idleTimeoutTicks / 20.0F);
@@ -122,8 +113,9 @@ public class AutoBridgeConfigScreen extends Screen {
         return Text.literal("自动搭路模式：" + (BridgeConfig.autoMode ? "开" : "关"));
     }
 
-    private static Text lowHeadText() {
-        return Text.literal(String.format(Locale.ROOT, "启动低头角度：+%.0f°（正数=低头）", BridgeConfig.lowHeadPitch));
+    /** 搭路方式：蹲搭（贴边潜行）/ 神桥（不潜行，靠原版边缘钳制）。 */
+    private static Text bridgeModeText() {
+        return Text.literal("搭路方式：" + BridgeConfig.bridgeMode.displayName());
     }
 
     private static Text idleTimeoutText() {

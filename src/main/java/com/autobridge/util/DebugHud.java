@@ -43,11 +43,12 @@ public final class DebugHud {
         int y = 6;
         int step = 10;
 
-        // 标题
+        // 标题：模式后面带上当前搭路方式（蹲搭 / 神桥）—— 两个方式来回测时一眼能看出在跑哪个
         String mode = BridgeConfig.autoMode ? "AUTO(常开)" : "已关闭";
         boolean bridging = AutoBridgeClient.CONTROLLER.isBridging();
         context.drawTextWithShadow(client.textRenderer,
-                "AutoBridge  " + mode + "  " + (bridging ? "搭路中" : "待机"), x, y, bridging ? GREEN : GRAY);
+                "AutoBridge  " + mode + "·" + BridgeConfig.bridgeMode.displayName()
+                        + "  " + (bridging ? "搭路中" : "待机"), x, y, bridging ? GREEN : GRAY);
         y += step;
 
         // 状态：待机阶段在等启动信号；接管阶段显示还有多久超时
@@ -58,13 +59,11 @@ public final class DebugHud {
             context.drawTextWithShadow(client.textRenderer,
                     "状态: 已关闭（ModMenu 里打开）", x, y, GRAY);
         } else if (bridging) {
-            // 潜行是「在边缘才按」——所以要显示当前到底按没按，否则看不出它是不是卡住了
-            boolean sneakingNow = ctrl.isActive();
+            // 状态标签（[接管中·不潜行·A路线]）按用户要求去掉：搭路中只留"还有多久超时"。
             double left = Math.max(0.0D, (timeout - idleTicks) / 20.0D);
             context.drawTextWithShadow(client.textRenderer,
-                    String.format("状态: 搭路中 [%s] —— 还有 %.1f 秒无放置就结束",
-                            sneakingNow ? "边缘潜行中" : "不在边缘·潜行已松", left),
-                    x, y, sneakingNow ? GREEN : YELLOW);
+                    String.format("状态: 搭路中 —— 还有 %.1f 秒没有成功放置就结束", left),
+                    x, y, GREEN);
         } else {
             context.drawTextWithShadow(client.textRenderer,
                     "状态: 待机 —— 蹲在边缘 + 低头 + 在脚下一格放一块启动", x, y, YELLOW);
@@ -79,11 +78,6 @@ public final class DebugHud {
                             + " 脚下已放" + mark(ctrl.isIdleFootSolid()),
                     x, y, WHITE);
         }
-        y += step;
-
-        // 方向
-        context.drawTextWithShadow(client.textRenderer,
-                "方向: " + BridgeConfig.directionName(), x, y, WHITE);
         y += step;
 
         // 准星
@@ -102,8 +96,11 @@ public final class DebugHud {
 
         // 俯仰角：命中侧面需要把视角压下去。
         // ⚠️ 正数 = 向下看（+90 是垂直看脚底），负数 = 抬头看天。
+        // 可用区间随眼高变（用户实测）：站立 79°~84°，潜行 77°~83°。
+        String band = player.isSneaking() ? "77° ~ 83°" : "79° ~ 84°";
         context.drawTextWithShadow(client.textRenderer,
-                "俯仰角: " + String.format("%.0f", player.getPitch()) + "°   瞄到侧面约 +77° ~ +83°",
+                "俯仰角: " + String.format("%.0f", player.getPitch()) + "°   正面瞄侧面 +" + band
+                        + "（斜站角落可更低）",
                 x, y, WHITE);
         y += step;
 
@@ -133,89 +130,27 @@ public final class DebugHud {
                 x, y, YELLOW);
         y += step;
 
-        // 判定
-        if (result == null) {
-            context.drawTextWithShadow(client.textRenderer, "判定: (未激活)", x, y, GRAY);
-        } else if (result.ok()) {
-            context.drawTextWithShadow(client.textRenderer, "判定: OK —— 模拟右键", x, y, GREEN);
-        } else {
-            context.drawTextWithShadow(client.textRenderer, "判定: " + result.reason(), x, y, RED);
-        }
-        y += step;
-
-        // 下一步该怎么做
-        String hint = buildHint(result, blockHit);
-        if (hint != null) {
-            context.drawTextWithShadow(client.textRenderer, "→ " + hint, x, y, AQUA);
-            y += step;
-        }
+        // 判定行与「→ 下一步怎么做」提示行已按用户要求从 HUD 移除。
 
         // 潜行 + 手上物品
+        // 蹲搭模式模组会强制潜行，所以显示那个开关；神桥模式模组完全不接管潜行。
+        boolean godBridgeNow = BridgeConfig.bridgeMode == BridgeConfig.BridgeMode.GOD_BRIDGE;
         context.drawTextWithShadow(client.textRenderer,
                 "潜行: " + (player.isSneaking() ? "是" : "否")
-                        + "  强制潜行=" + BridgeConfig.forceSneak
+                        + (godBridgeNow ? "（模组不接管）" : "  强制潜行=" + BridgeConfig.forceSneak)
                         + "  手上=" + player.getMainHandStack().getItem(),
                 x, y, WHITE);
         y += step;
 
-        // 触发计数：用来确认模组真的在动。发起次数 vs 世界确认成功次数分开显示，
-        // 两者差得多就说明右键发出去了但没放成（被服务端拒绝或还在冷却）。
-        int count = AutoBridgeClient.CONTROLLER.getPlaceCount();
+        // A 路线（按住右键）下「按键次数」不是有效口径：按住期间每 tick 都在按，4 tick 才放一块。
+        // 所以只显示**世界确认的放成数**，再加**平均块/秒** —— 后者才是判断
+        // "跟不跟得上玩家走路（4.317 格/秒）"的那个数字，也是两条路线对比时看的数。
         int confirmed = AutoBridgeClient.CONTROLLER.getConfirmedPlaceCount();
-        int lastAt = AutoBridgeClient.CONTROLLER.getLastPlaceAt();
-        int now = AutoBridgeClient.CONTROLLER.getTickCounter();
-        String ago = (lastAt < 0) ? "从未" : ((now - lastAt) / 20) + "秒前";
+        double avg = AutoBridgeClient.CONTROLLER.getAverageBlocksPerSecond();
         context.drawTextWithShadow(client.textRenderer,
-                "模拟右键: " + count + " 次   确认放成: " + confirmed + " 次   最近: " + ago,
-                x, y, count > 0 ? GREEN : GRAY);
-    }
-
-    /** 把"被哪一条挡下"翻译成"下一步该做什么"。 */
-    private static String buildHint(BridgeValidator.Result result, BlockHitResult blockHit) {
-        if (!BridgeConfig.autoMode) {
-            return "自动搭路已关闭 → 在 ModMenu 里打开";
-        }
-
-        // ---- 还没启动：告诉玩家怎么启动 ----
-        if (!AutoBridgeClient.CONTROLLER.isBridging()) {
-            return "启动方式：蹲在方块边缘 + 低头看脚底 + 在脚下一格放一块方块";
-        }
-
-        if (blockHit == null) {
-            return "准星没打到方块：低头看脚边的方块";
-        }
-        if (blockHit.getSide() == Direction.UP) {
-            return "命中的是顶面 → 站到方块边缘 + 再低头，让准星落到侧面";
-        }
-        if (result == null || result.ok()) {
-            return null;
-        }
-        String r = result.reason();
-        if (r.contains("脚下层")) {
-            return "再低头一点，别让射线越过脚下方块落到下一层";
-        }
-        if (r.contains("水平距离")) {
-            return "离脚下方块太远，往目标方块靠近一点";
-        }
-        if (r.contains("方向")) {
-            return "方向不对：方块要放在视角反方向（身后）";
-        }
-        if (r.contains("未潜行")) {
-            return "潜行刚按下（要 1 tick 同步到服务端），按住别松";
-        }
-        if (r.contains("支撑")) {
-            return "要站在方块上（别跳、别飞、别游泳）";
-        }
-        if (r.contains("canPlace")) {
-            return "那个位置放不了：已经有方块，或者不是可替换方块";
-        }
-        if (r.contains("碰撞")) {
-            return "会卡住自己，换个站位";
-        }
-        if (r.contains("交互距离")) {
-            return "太远了，靠近一点";
-        }
-        return null;
+                "放成: " + confirmed + " 次   平均 " + String.format("%.2f", avg)
+                        + " 块/秒（原版按住上限 5 次/秒）",
+                x, y, confirmed > 0 ? GREEN : GRAY);
     }
 
     private static String fmt(BlockPos pos) {

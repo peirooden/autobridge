@@ -112,10 +112,12 @@ public final class BridgeValidator {
             return Result.fail(String.format("超出交互距离 %.2f > %.2f", dist, reach), expected);
         }
 
-        // ---------- ⑨ 必须处于潜行 ----------
+        // ---------- ⑨ 必须处于潜行（仅蹲搭模式） ----------
         // 原版潜行会让 shouldCancelInteraction() 返回 true，
         // 右键才不会去开箱子/按按钮，而是直接进入方块放置流程。
-        if (!player.isSneaking()) {
+        // 神桥模式接管期间不潜行，这一条必须跳过，否则一格都放不出去；代价是瞄到箱子/门这类
+        // 可交互方块时右键会去开它 —— 搭路瞄的是脚下方块的侧面（石头/泥土），不受影响。
+        if (BridgeConfig.bridgeMode != BridgeConfig.BridgeMode.GOD_BRIDGE && !player.isSneaking()) {
             return Result.fail("未潜行（右键会先触发方块交互，放置不成立）", expected);
         }
 
