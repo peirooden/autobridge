@@ -3,6 +3,7 @@ package com.autobridge.core;
 import com.autobridge.config.BridgeConfig;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.entity.attribute.EntityAttributes;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.ItemPlacementContext;
 import net.minecraft.item.ItemStack;
@@ -78,7 +79,7 @@ public final class BridgeValidator {
         }
 
         double dist = player.getEyePos().distanceTo(hit.getPos());
-        double reach = client.interactionManager == null ? 4.5D : client.interactionManager.getReachDistance();
+        double reach = player.getAttributeValue(EntityAttributes.BLOCK_INTERACTION_RANGE);
         if (dist > reach) {
             return Result.fail(String.format("超出交互距离 %.2f > %.2f", dist, reach), expected);
         }
@@ -89,7 +90,7 @@ public final class BridgeValidator {
 
         if (hit.getSide().getAxis() == Direction.Axis.Y) {
             return Result.fail("命中的是方块顶面/底面（搭路必须瞄侧面），面="
-                    + hit.getSide().getName(), expected);
+                    + hit.getSide().asString(), expected);
         }
 
         return checkEdgeSneak(player, placePos, footPos);

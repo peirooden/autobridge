@@ -316,7 +316,7 @@ public class BridgeController {
         String aim = "-";
         HitResult target = client.crosshairTarget;
         if (target instanceof BlockHitResult bh) {
-            aim = bh.getBlockPos().toShortString() + "/" + bh.getSide().getName()
+            aim = bh.getBlockPos().toShortString() + "/" + bh.getSide().asString()
                     + " => put=" + bh.getBlockPos().offset(bh.getSide()).toShortString();
         }
 
@@ -369,7 +369,7 @@ public class BridgeController {
         if (confirmedPlaceCount <= 3 || confirmedPlaceCount % 10 == 0 || gap >= 10) {
             HitResult target = client.crosshairTarget;
             String hitDesc = (target instanceof BlockHitResult bh)
-                    ? bh.getBlockPos().toShortString() + "/" + bh.getSide().getName()
+                    ? bh.getBlockPos().toShortString() + "/" + bh.getSide().asString()
                     : "-";
             AutoBridgeClient.debug("[AutoBridge] 放成 #{}: placePos={} hit={} {} 距上一块 {} tick",
                     confirmedPlaceCount, placedPos, hitDesc, pressAimDesc, gap);
@@ -426,7 +426,7 @@ public class BridgeController {
         HitResult target = client.crosshairTarget;
         String targetDesc;
         if (target instanceof BlockHitResult blockHit && target.getType() == HitResult.Type.BLOCK) {
-            targetDesc = blockHit.getBlockPos().toShortString() + "/" + blockHit.getSide().getName();
+            targetDesc = blockHit.getBlockPos().toShortString() + "/" + blockHit.getSide().asString();
         } else {
             targetDesc = (target == null) ? "null" : target.getType().name();
         }
@@ -448,7 +448,7 @@ public class BridgeController {
         if (player == null || result == null || result.expectedPos() == null) {
             return "pitch=- δ=- δtan=-";
         }
-        BlockPos foot = BridgeValidator.findFootBlock(player, player.getWorld());
+        BlockPos foot = BridgeValidator.findFootBlock(player, player.getEntityWorld());
         double pitch = player.getPitch();
         double delta = overhang(player, foot, result.expectedPos());
         double deltaTan = Double.isNaN(delta) ? Double.NaN : delta * Math.tan(Math.toRadians(pitch));

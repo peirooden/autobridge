@@ -13,17 +13,17 @@ import net.minecraft.util.math.Direction;
 
 public final class DebugHud {
 
-    private static final int WHITE = 0xFFFFFF;
-    private static final int GREEN = 0x55FF55;
-    private static final int RED = 0xFF5555;
-    private static final int YELLOW = 0xFFFF55;
-    private static final int GRAY = 0xAAAAAA;
-    private static final int AQUA = 0x55FFFF;
+    private static final int WHITE = 0xFFFFFFFF;
+    private static final int GREEN = 0xFF55FF55;
+    private static final int RED = 0xFFFF5555;
+    private static final int YELLOW = 0xFFFFFF55;
+    private static final int GRAY = 0xFFAAAAAA;
+    private static final int AQUA = 0xFF55FFFF;
 
     private DebugHud() {
     }
 
-    public static void render(DrawContext context, float tickDelta) {
+    public static void render(DrawContext context) {
         if (!BridgeConfig.debugHud) {
             return;
         }
@@ -67,7 +67,7 @@ public final class DebugHud {
                 ? b : null;
         if (blockHit != null) {
             context.drawTextWithShadow(client.textRenderer,
-                    "准星: " + fmt(blockHit.getBlockPos()) + " 面=" + blockHit.getSide().getName()
+                    "准星: " + fmt(blockHit.getBlockPos()) + " 面=" + blockHit.getSide().asString()
                             + " 距离=" + String.format("%.2f", player.getEyePos().distanceTo(blockHit.getPos())),
                     x, y, WHITE);
         } else {
