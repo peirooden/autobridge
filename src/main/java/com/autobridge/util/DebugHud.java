@@ -108,7 +108,7 @@ public final class DebugHud {
         context.drawTextWithShadow(client.textRenderer,
                 "潜行: " + (player.isSneaking() ? "是" : "否")
                         + (godBridgeNow ? "（模组不接管）" : "  强制潜行=" + BridgeConfig.forceSneak)
-                        + "  手上=" + player.getMainHandStack().getItem(),
+                        + "  手上=" + BridgeValidator.heldDescription(player),
                 x, y, WHITE);
         y += step;
 

@@ -185,7 +185,7 @@ public class BridgeController {
             }
         }
 
-        boolean holdingBlock = player.getMainHandStack().getItem() instanceof BlockItem;
+        boolean holdingBlock = BridgeValidator.isHoldingBlock(player);
         boolean wantsToJump = client.options.jumpKey.isPressed();
         boolean onEdge = ticksSinceEdge <= SNEAK_EDGE_MEMORY_TICKS;
         boolean godBridge = BridgeConfig.bridgeMode == BridgeConfig.BridgeMode.GOD_BRIDGE;
@@ -268,7 +268,7 @@ public class BridgeController {
         boolean sneaking = player.isSneaking();
         boolean onEdge = ticksSinceEdge <= EDGE_MEMORY_TICKS;
         boolean headDown = player.getPitch() > BridgeConfig.lowHeadPitch;
-        boolean holdingBlock = player.getMainHandStack().getItem() instanceof BlockItem;
+        boolean holdingBlock = BridgeValidator.isHoldingBlock(player);
 
         updateIdleFlags(client, player, solidNow);
 
@@ -295,7 +295,7 @@ public class BridgeController {
         idleSneaking = player.isSneaking();
         idleOnEdge = ticksSinceEdge <= EDGE_MEMORY_TICKS;
         idleHeadDown = player.getPitch() > BridgeConfig.lowHeadPitch;
-        idleHolding = player.getMainHandStack().getItem() instanceof BlockItem;
+        idleHolding = BridgeValidator.isHoldingBlock(player);
         idleFootSolid = footSolid;
     }
 
@@ -311,7 +311,7 @@ public class BridgeController {
         boolean sneaking = player.isSneaking();
         boolean onEdge = BridgeValidator.isOnBlockEdge(player, client.world);
         boolean headDown = player.getPitch() > BridgeConfig.lowHeadPitch;
-        boolean holdingBlock = player.getMainHandStack().getItem() instanceof BlockItem;
+        boolean holdingBlock = BridgeValidator.isHoldingBlock(player);
 
         String aim = "-";
         HitResult target = client.crosshairTarget;
@@ -439,7 +439,7 @@ public class BridgeController {
                 lastResult.reason(), targetDesc, expectedDesc,
                 aimDesc(client, lastResult),
                 player.isSneaking(), BridgeConfig.directionMode,
-                player.getMainHandStack().getItem(),
+                BridgeValidator.heldDescription(player),
                 idleTicks, BridgeConfig.idleTimeoutTicks);
     }
 
