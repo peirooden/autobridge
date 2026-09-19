@@ -8,22 +8,14 @@ import net.minecraft.text.Text;
 
 import java.util.Locale;
 
-/**
- * ModMenu 里的设置界面。
- *
- * <p>刻意只用原版 {@link ButtonWidget} 手搓，不引 Cloth Config —— 每点一下就地改
- * {@link BridgeConfig} 并立刻存盘，按钮上显示的永远是当前真实值，不存在「改了没保存」的中间状态。
- */
 public class AutoBridgeConfigScreen extends Screen {
 
     private static final int BUTTON_WIDTH = 220;
     private static final int BUTTON_HEIGHT = 20;
     private static final int GAP = 22;
 
-    /** 空闲超时的候选秒数。 */
     private static final int[] IDLE_TIMEOUT_STEPS = {1, 2, 3, 4, 5};
 
-    /** ModMenu 会把上一级界面传进来，点「完成」要还回去。 */
     private final Screen parent;
 
     public AutoBridgeConfigScreen(Screen parent) {
@@ -49,8 +41,6 @@ public class AutoBridgeConfigScreen extends Screen {
         }).dimensions(x, y, BUTTON_WIDTH, BUTTON_HEIGHT).build());
         y += GAP;
 
-        // 「启动低头角度」按用户要求从菜单移除：扩展点留在 BridgeConfig.lowHeadPitch（默认 77），
-        // 但不暴露成用户可见的开关。
         addDrawableChild(ButtonWidget.builder(idleTimeoutText(), button -> {
             int idx = 0;
             int current = Math.round(BridgeConfig.idleTimeoutTicks / 20.0F);
@@ -105,15 +95,10 @@ public class AutoBridgeConfigScreen extends Screen {
         }
     }
 
-    // ------------------------------------------------------------------
-    // 按钮文案：每次都从 BridgeConfig 现取，所以永远显示当前真值
-    // ------------------------------------------------------------------
-
     private static Text autoModeText() {
         return Text.literal("自动搭路模式：" + (BridgeConfig.autoMode ? "开" : "关"));
     }
 
-    /** 搭路方式：蹲搭（贴边潜行）/ 神桥（不潜行，靠原版边缘钳制）。 */
     private static Text bridgeModeText() {
         return Text.literal("搭路方式：" + BridgeConfig.bridgeMode.displayName());
     }
