@@ -23,7 +23,7 @@ public final class DebugHud {
     private DebugHud() {
     }
 
-    public static void render(DrawContext context, float tickDelta) {
+    public static void render(DrawContext context) {
         if (!BridgeConfig.debugHud) {
             return;
         }

@@ -27,7 +27,7 @@ public class AutoBridgeClient implements ClientModInitializer {
         BridgeConfig.load();
 
         ClientTickEvents.START_CLIENT_TICK.register(CONTROLLER::tickStart);
-        HudRenderCallback.EVENT.register(DebugHud::render);
+        HudRenderCallback.EVENT.register((context, tickCounter) -> DebugHud.render(context));
 
         LOGGER.info("[AutoBridge] {} loaded: CLIENT-ONLY. Sneak + simulated right-click only, rotation untouched.",
                 Edition.TITLE);

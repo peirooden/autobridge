@@ -1,6 +1,6 @@
 # AutoBridge
 
-A **client-side** bridging assistant for Minecraft **1.20.1 (Fabric)** with two bridging modes — **Crouch** (needs an edge, holds sneak for you) and **God Bridge** (no sneaking at all). It drives only vanilla inputs; your movement and your camera stay completely in your hands.
+A **client-side** bridging assistant for Minecraft **1.21.1 (Fabric)** with two bridging modes — **Crouch** (needs an edge, holds sneak for you) and **God Bridge** (no sneaking at all). It drives only vanilla inputs; your movement and your camera stay completely in your hands.
 
 Bridging a gap by hand is fiddly: hold sneak, line the crosshair up on the side of the block right at the edge, and click at the exact moment. Miss the timing and you drop into the void. AutoBridge handles the two fiddly parts and leaves you the two fun parts.
 
@@ -50,9 +50,9 @@ If anything fails, nothing happens and no click is sent.
 
 ## Requirements
 
-- Minecraft **1.20.1**
+- Minecraft **1.21.1**
 - **Fabric Loader** 0.16.14 or newer
-- **Fabric API** 0.92.12+1.20.1 or newer
+- **Fabric API** 0.116.17+1.21.1 or newer
 - **Java 21**
 - Optional: **ModMenu** — if installed, AutoBridge adds a settings screen. It is not required and not bundled.
 

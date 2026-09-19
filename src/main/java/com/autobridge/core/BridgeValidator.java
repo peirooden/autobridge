@@ -3,6 +3,7 @@ package com.autobridge.core;
 import com.autobridge.config.BridgeConfig;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.entity.attribute.EntityAttributes;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.ItemPlacementContext;
 import net.minecraft.item.ItemStack;
@@ -78,7 +79,7 @@ public final class BridgeValidator {
         }
 
         double dist = player.getEyePos().distanceTo(hit.getPos());
-        double reach = client.interactionManager == null ? 4.5D : client.interactionManager.getReachDistance();
+        double reach = player.getAttributeValue(EntityAttributes.PLAYER_BLOCK_INTERACTION_RANGE);
         if (dist > reach) {
             return Result.fail(String.format("超出交互距离 %.2f > %.2f", dist, reach), expected);
         }
