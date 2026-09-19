@@ -33,6 +33,28 @@ public final class BridgeValidator {
         }
     }
 
+    public static Hand bridgingHand(ClientPlayerEntity player) {
+        if (player.getMainHandStack().getItem() instanceof BlockItem) {
+            return Hand.MAIN_HAND;
+        }
+        if (player.getOffHandStack().getItem() instanceof BlockItem) {
+            return Hand.OFF_HAND;
+        }
+        return null;
+    }
+
+    public static boolean isHoldingBlock(ClientPlayerEntity player) {
+        return bridgingHand(player) != null;
+    }
+
+    public static String heldDescription(ClientPlayerEntity player) {
+        Hand hand = bridgingHand(player);
+        if (hand == null) {
+            return "空";
+        }
+        return player.getStackInHand(hand).getItem() + (hand == Hand.OFF_HAND ? "(副手)" : "");
+    }
+
     public static Result validate(MinecraftClient client) {
         return validate(client, null);
     }
@@ -54,12 +76,13 @@ public final class BridgeValidator {
             return Result.fail("准星未命中方块", null);
         }
 
-        ItemStack stack = player.getStackInHand(Hand.MAIN_HAND);
-        if (!(stack.getItem() instanceof BlockItem)) {
-            return Result.fail("主手不是方块物品", null);
+        Hand hand = bridgingHand(player);
+        if (hand == null) {
+            return Result.fail("主手和副手都不是方块物品", null);
         }
+        ItemStack stack = player.getStackInHand(hand);
 
-        ItemPlacementContext placeContext = new ItemPlacementContext(player, Hand.MAIN_HAND, stack, hit);
+        ItemPlacementContext placeContext = new ItemPlacementContext(player, hand, stack, hit);
         if (!placeContext.canPlace()) {
             return Result.fail("原版 canPlace 判定不可放置", null);
         }
